@@ -1,6 +1,10 @@
 # GitNexus
 
-<!-- Add your demo video here -->
+
+
+https://github.com/user-attachments/assets/6f13bd45-d6e9-4f4e-a360-ceb66f41c741
+
+
 
 GitNexus converts codebases into interactive knowledge graphs. Upload a GitHub repository or ZIP file to analyze code structure, dependencies, and relationships. Includes AI chat for code exploration.
 
