@@ -206,10 +206,9 @@ export const PYTHON_QUERIES = {
       right: _) @var_assignment
   `,
   global_variables: `
-    (module
-      (assignment
-        left: (identifier) @global_var
-        right: _)) @global_assignment
+    (assignment
+      left: (identifier) @global_var
+      right: _) @global_assignment
   `,
   decorators: `
     (decorated_definition

@@ -62,20 +62,50 @@ class FeatureFlagManager {
   }
 
   /**
-   * Load feature flags from localStorage or use defaults
+   * Load feature flags from environment, localStorage, or use defaults
    */
   private loadFlags(): FeatureFlags {
+    let flags = { ...DEFAULT_FEATURE_FLAGS };
+    
+    // First, override with environment variables
+    // In Vite, environment variables are available via import.meta.env
+    let parsingMode: string | undefined;
+    
     try {
-      const stored = localStorage.getItem('gitnexus_feature_flags');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return { ...DEFAULT_FEATURE_FLAGS, ...parsed };
+      // Try to access import.meta.env (available in Vite/ES modules)
+      if (import.meta && import.meta.env && import.meta.env.VITE_PARSING_MODE) {
+        parsingMode = import.meta.env.VITE_PARSING_MODE.toLowerCase();
+      }
+    } catch (e) {
+      // Fallback to process.env (Node.js environments)
+      if (typeof process !== 'undefined' && process.env && process.env.PARSING_MODE) {
+        parsingMode = process.env.PARSING_MODE.toLowerCase();
+      }
+    }
+    
+    if (parsingMode === 'single' || parsingMode === 'single-threaded') {
+      flags.enableParallelParsing = false;
+      console.log('🔄 Environment: Parallel parsing disabled via PARSING_MODE=single');
+    } else if (parsingMode === 'parallel' || parsingMode === 'multi-threaded') {
+      flags.enableParallelParsing = true;
+      console.log('🚀 Environment: Parallel parsing enabled via PARSING_MODE=parallel');
+    }
+    
+    // Then, try to load from localStorage (can override environment)
+    // Only try localStorage if we're in a browser context (not in workers)
+    try {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('gitnexus_feature_flags');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          flags = { ...flags, ...parsed };
+        }
       }
     } catch (error) {
       console.warn('Failed to load feature flags from localStorage:', error);
     }
     
-    return { ...DEFAULT_FEATURE_FLAGS };
+    return flags;
   }
 
   /**

@@ -2,8 +2,10 @@ import { SimpleKnowledgeGraph } from '../graph/graph.js';
 import type { KnowledgeGraph } from '../graph/types.ts';
 import { StructureProcessor } from './structure-processor.ts';
 import { ParsingProcessor } from './parsing-processor.ts';
+import { ParallelParsingProcessor } from './parallel-parsing-processor.ts';
 import { ImportProcessor } from './import-processor.ts';
 import { CallProcessor } from './call-processor.ts';
+import { isParallelParsingEnabled } from '../../config/feature-flags.ts';
 
 export interface PipelineInput {
   projectRoot: string;
@@ -18,13 +20,22 @@ export interface PipelineInput {
 
 export class GraphPipeline {
   private structureProcessor: StructureProcessor;
-  private parsingProcessor: ParsingProcessor;
+  private parsingProcessor: ParsingProcessor | ParallelParsingProcessor;
   private importProcessor: ImportProcessor;
   private callProcessor!: CallProcessor;
 
   constructor() {
     this.structureProcessor = new StructureProcessor();
-    this.parsingProcessor = new ParsingProcessor();
+    
+    // Choose parsing processor based on feature flag
+    if (isParallelParsingEnabled()) {
+      console.log('🚀 Using Parallel Processing (Multi-threaded with Workers)');
+      this.parsingProcessor = new ParallelParsingProcessor();
+    } else {
+      console.log('🔄 Using Single-threaded Processing');
+      this.parsingProcessor = new ParsingProcessor();
+    }
+    
     this.importProcessor = new ImportProcessor();
     
   }
@@ -34,7 +45,8 @@ export class GraphPipeline {
     
     const graph = new SimpleKnowledgeGraph();
 
-    console.log(`🚀 Starting 4-pass ingestion for project: ${projectName}`);
+    const processingMode = isParallelParsingEnabled() ? 'parallel' : 'single-threaded';
+    console.log(`🚀 Starting 4-pass ingestion for project: ${projectName} (${processingMode} processing)`);
     
     // Pass 1: Structure Analysis
     console.log('📁 Pass 1: Analyzing project structure...');
@@ -45,7 +57,7 @@ export class GraphPipeline {
     });
     
     // Pass 2: Code Parsing and Definition Extraction (populates FunctionRegistryTrie)
-    console.log('🔍 Pass 2: Parsing code and extracting definitions...');
+    console.log(`🔍 Pass 2: Parsing code and extracting definitions (${processingMode})...`);
     await this.parsingProcessor.process(graph, {
       filePaths,
       fileContents,

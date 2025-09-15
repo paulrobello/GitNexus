@@ -34,23 +34,27 @@ function compileQueries() {
       throw new Error('Could not extract queries from TypeScript file');
     }
     
-    // Create JavaScript module content
+    // Create JavaScript content for Web Workers (no exports, global variables only)
     const jsContent = `/**
  * AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
  * Generated from src/core/ingestion/tree-sitter-queries.ts
  * Run 'npm run compile-queries' to regenerate
+ * 
+ * IMPORTANT: This file is loaded via importScripts() in a classic Web Worker.
+ * DO NOT use ES6 export statements! Use global variables (const) instead.
+ * importScripts() cannot load files with 'export' statements.
  */
 
-export const TYPESCRIPT_QUERIES = ${typescriptMatch[1]};
+const TYPESCRIPT_QUERIES = ${typescriptMatch[1]};
 
-export const JAVASCRIPT_QUERIES = ${javascriptMatch[1]};
+const JAVASCRIPT_QUERIES = ${javascriptMatch[1]};
 
-export const PYTHON_QUERIES = ${pythonMatch[1]};
+const PYTHON_QUERIES = ${pythonMatch[1]};
 
-export const JAVA_QUERIES = ${javaMatch[1]};
+const JAVA_QUERIES = ${javaMatch[1]};
 
 // Helper function to get queries for a specific language
-export function getQueriesForLanguage(language) {
+function getQueriesForLanguage(language) {
   switch (language) {
     case 'typescript':
       return TYPESCRIPT_QUERIES;
@@ -66,7 +70,7 @@ export function getQueriesForLanguage(language) {
 }
 
 // Export individual query sets for backward compatibility
-export const queries = {
+const queries = {
   typescript: TYPESCRIPT_QUERIES,
   javascript: JAVASCRIPT_QUERIES,
   python: PYTHON_QUERIES,

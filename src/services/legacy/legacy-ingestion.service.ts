@@ -2,10 +2,10 @@
  * Legacy Ingestion Service
  * 
  * Concrete implementation of BaseIngestionService for Legacy engine.
- * Uses sequential processing with in-memory graph storage.
+ * Uses parallel processing with in-memory graph storage.
  * 
  * Engine characteristics:
- * - Sequential processing (single-threaded)
+ * - Parallel processing (multi-threaded with Web Workers)
  * - In-memory graph storage (SimpleKnowledgeGraph)
  * - Worker-based processing for isolation
  * - JSON serialization for data transfer
@@ -42,13 +42,13 @@ export class LegacyIngestionService extends BaseIngestionService {
     
     const { projectName, projectRoot, filePaths, fileContents, onProgress } = data;
     
-    console.log('🔧 Legacy Engine: Using sequential processing with in-memory storage');
+    console.log('🔧 Legacy Engine: Using parallel processing with in-memory storage');
     
     // Create worker for processing isolation
     const worker = await getIngestionWorker();
     
     try {
-      onProgress?.('Processing with Legacy engine (sequential + in-memory)...');
+      onProgress?.('Processing with Legacy engine (parallel + in-memory)...');
       
       const result = await worker.processRepository({
         projectName,
@@ -61,7 +61,7 @@ export class LegacyIngestionService extends BaseIngestionService {
         throw new Error(result.error || 'Legacy processing failed');
       }
 
-      console.log('✅ Legacy Engine: Sequential processing completed successfully');
+      console.log('✅ Legacy Engine: Parallel processing completed successfully');
       console.log(`📊 Legacy Engine: Generated ${result.graph!.nodes.length} nodes, ${result.graph!.relationships.length} relationships`);
 
       return {
@@ -89,7 +89,7 @@ export class LegacyIngestionService extends BaseIngestionService {
   ): Promise<LegacyIngestionResult> {
     
     console.log('🚀 Legacy Ingestion Service: Starting GitHub repository processing');
-    console.log(`🔧 Processing mode: Sequential + In-Memory`);
+    console.log(`🔧 Processing mode: Parallel + In-Memory`);
     
     return super.processGitHubRepo(githubUrl, options) as Promise<LegacyIngestionResult>;
   }
@@ -103,7 +103,7 @@ export class LegacyIngestionService extends BaseIngestionService {
   ): Promise<LegacyIngestionResult> {
     
     console.log('🚀 Legacy Ingestion Service: Starting ZIP file processing');
-    console.log(`🔧 Processing mode: Sequential + In-Memory`);
+    console.log(`🔧 Processing mode: Parallel + In-Memory`);
     
     return super.processZipFile(file, options) as Promise<LegacyIngestionResult>;
   }

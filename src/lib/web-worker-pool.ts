@@ -231,10 +231,13 @@ export class WebWorkerPool {
   }
 
   private processQueue(): void {
-    while (this.taskQueue.length > 0 && this.getAvailableWorker()) {
-      const task = this.taskQueue.shift()!;
-      const worker = this.getAvailableWorker()!;
+    while (this.taskQueue.length > 0) {
+      const worker = this.getAvailableWorker();
+      if (!worker) {
+        break; // No workers available
+      }
       
+      const task = this.taskQueue.shift()!;
       this.assignTaskToWorker(task, worker);
     }
   }
@@ -245,7 +248,12 @@ export class WebWorkerPool {
     }
 
     if (this.workers.length < this.maxWorkers) {
-      return this.createWorker();
+      try {
+        return this.createWorker();
+      } catch (error) {
+        console.error(`${this.name}: Failed to create worker in getAvailableWorker:`, error);
+        return null;
+      }
     }
 
     return null;
@@ -253,7 +261,7 @@ export class WebWorkerPool {
 
   private createWorker(): Worker {
     try {
-      const worker = new Worker(this.workerScript, { type: 'module' });
+      const worker = new Worker(this.workerScript, { type: 'classic' });
       
       worker.onerror = (error) => {
         this.handleWorkerError(worker, error);
@@ -278,6 +286,11 @@ export class WebWorkerPool {
   }
 
   private assignTaskToWorker(task: WorkerTask, worker: Worker): void {
+    if (!worker) {
+      task.reject(new Error('Worker is null'));
+      return;
+    }
+    
     this.activeTasks.set(task.id, task);
 
     const timeoutId = setTimeout(() => {
