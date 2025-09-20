@@ -1,6 +1,6 @@
 import type { KnowledgeGraph } from '../graph/graph.ts';
 import type { GraphNode, GraphRelationship } from '../graph/types.ts';
-import { generateId } from '../../lib/utils.ts';
+import { generateDeterministicId } from '../../lib/utils.ts';
 
 export interface StructureInput {
   projectRoot: string;
@@ -10,6 +10,11 @@ export interface StructureInput {
 
 export class StructureProcessor {
   private nodeIdMap: Map<string, string> = new Map();
+
+  private stats = {
+    nodesProcessed: 0,
+    relationshipsProcessed: 0
+  };
 
   // Import ignore patterns from ParsingProcessor
   private static readonly IGNORE_PATTERNS = new Set([
@@ -51,37 +56,60 @@ export class StructureProcessor {
   /**
    * Process complete repository structure directly from discovered paths
    * This is the new robust approach that doesn't infer structure
+   * Now includes KuzuDB dual-write support
    */
   public async process(graph: KnowledgeGraph, input: StructureInput): Promise<void> {
     const { projectRoot, projectName, filePaths } = input;
     
-    // Create project root node
-    const projectNode = this.createProjectNode(projectName, projectRoot);
-    graph.addNode(projectNode);
-    
-    // Separate files and directories from the complete path list
-    const { directories, files } = this.categorizePaths(filePaths);
-    
-    // Filter out ignored directories from KG display (but keep for internal structure)
-    const visibleDirectories = directories.filter(dir => !this.shouldHideDirectory(dir));
-    const hiddenDirectoriesCount = directories.length - visibleDirectories.length;
-    
-    // Create directory nodes only for visible directories
-    const directoryNodes = this.createDirectoryNodes(visibleDirectories);
-    directoryNodes.forEach(node => graph.addNode(node));
-    
-    // Filter out files that are inside ignored directories
-    const visibleFiles = files.filter(file => !this.shouldHideFile(file));
-    const hiddenFilesCount = files.length - visibleFiles.length;
-    
-    // Create file nodes only for visible files
-    const fileNodes = this.createFileNodes(visibleFiles);
-    fileNodes.forEach(node => graph.addNode(node));
-    
-    // Establish CONTAINS relationships for visible structure only
-    this.createContainsRelationships(graph, projectNode.id, visibleDirectories, visibleFiles);
-    
-    const totalHidden = hiddenDirectoriesCount + hiddenFilesCount;
+    try {
+      // Reset statistics
+      this.stats = { nodesProcessed: 0, relationshipsProcessed: 0 };
+      
+      console.log(`📁 Processing structure for ${projectName} with ${filePaths.length} paths...`);
+      
+      // Create project root node
+      const projectNode = this.createProjectNode(projectName, projectRoot);
+      graph.addNode(projectNode);
+      this.stats.nodesProcessed++;
+      
+      // Separate files and directories from the complete path list
+      const { directories, files } = this.categorizePaths(filePaths);
+      
+      // Filter out ignored directories from KG display (but keep for internal structure)
+      const visibleDirectories = directories.filter(dir => !this.shouldHideDirectory(dir));
+      const hiddenDirectoriesCount = directories.length - visibleDirectories.length;
+      
+      // Create directory nodes only for visible directories
+      const directoryNodes = this.createDirectoryNodes(visibleDirectories);
+      for (const node of directoryNodes) {
+        graph.addNode(node);
+        this.stats.nodesProcessed++;
+      }
+      
+      // Filter out files that are inside ignored directories
+      const visibleFiles = files.filter(file => !this.shouldHideFile(file));
+      const hiddenFilesCount = files.length - visibleFiles.length;
+      
+      // Create file nodes only for visible files
+      const fileNodes = this.createFileNodes(visibleFiles);
+      for (const node of fileNodes) {
+        graph.addNode(node);
+        this.stats.nodesProcessed++;
+      }
+      
+      // Establish CONTAINS relationships for visible structure only
+      this.createContainsRelationships(graph, projectNode.id, visibleDirectories, visibleFiles);
+      
+      const totalHidden = hiddenDirectoriesCount + hiddenFilesCount;
+      console.log(`✅ Structure processing completed. Hidden ${totalHidden} items from display.`);
+      
+      // Log processing statistics
+      console.log(`📊 StructureProcessor: ${this.stats.nodesProcessed} nodes, ${this.stats.relationshipsProcessed} relationships`);
+      
+    } catch (error) {
+      console.error('❌ Structure processing failed:', error);
+      throw error;
+    }
   }
 
   private categorizePaths(allPaths: string[]): { directories: string[], files: string[] } {
@@ -127,7 +155,7 @@ export class StructureProcessor {
   }
 
   private createProjectNode(projectName: string, projectRoot: string): GraphNode {
-    const id = generateId('project');
+    const id = generateDeterministicId('project', projectName);
     this.nodeIdMap.set('', id); // Empty path represents project root
     
     return {
@@ -150,7 +178,7 @@ export class StructureProcessor {
     for (const dirPath of directoryPaths) {
       if (!dirPath) continue;
       
-      const id = generateId(`folder_${dirPath}`);
+      const id = generateDeterministicId('folder', dirPath);
       this.nodeIdMap.set(dirPath, id);
       
       const pathParts = dirPath.split('/');
@@ -182,7 +210,7 @@ export class StructureProcessor {
     for (const filePath of filePaths) {
       if (!filePath) continue;
       
-      const id = generateId(`file_${filePath}`);
+      const id = generateDeterministicId('file', filePath);
       this.nodeIdMap.set(filePath, id);
       
       const fileName = filePath.split('/').pop() || filePath;
@@ -207,8 +235,9 @@ export class StructureProcessor {
     return nodes;
   }
 
+
   /**
-   * Create CONTAINS relationships for the complete discovered structure
+   * Create CONTAINS relationships
    */
   private createContainsRelationships(
     graph: KnowledgeGraph, 
@@ -227,7 +256,7 @@ export class StructureProcessor {
       // Only create relationships if both parent and child nodes exist in the graph
       if (parentId && childId && parentId !== childId) {
         const relationship: GraphRelationship = {
-          id: generateId('contains'),
+          id: generateDeterministicId('contains', `${parentId}-${childId}`),
           type: 'CONTAINS',
           source: parentId,
           target: childId,
@@ -235,12 +264,13 @@ export class StructureProcessor {
         };
         
         graph.addRelationship(relationship);
+        this.stats.relationshipsProcessed++;
       } else if (!parentId && parentPath !== '') {
         // If parent directory was hidden, connect directly to project or nearest visible parent
         const visibleParentId = this.findVisibleParent(parentPath, projectId);
         if (visibleParentId && childId && visibleParentId !== childId) {
           const relationship: GraphRelationship = {
-            id: generateId('contains'),
+            id: generateDeterministicId('contains', `${parentId}-${childId}`),
             type: 'CONTAINS',
             source: visibleParentId,
             target: childId,
@@ -248,10 +278,10 @@ export class StructureProcessor {
           };
           
           graph.addRelationship(relationship);
+        this.stats.relationshipsProcessed++;
         }
       }
     }
-    
   }
 
   /**
@@ -372,5 +402,15 @@ export class StructureProcessor {
     }
     
     return false;
+  }
+
+  /**
+   * Get processing statistics
+   */
+  public getStats() {
+    return {
+      nodesProcessed: this.stats.nodesProcessed,
+      relationshipsProcessed: this.stats.relationshipsProcessed
+    };
   }
 }

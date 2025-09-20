@@ -71,7 +71,20 @@ export class IngestionService {
       }
 
       return {
-        graph: result.graph!,
+        graph: {
+          nodes: result.nodes || [],
+          relationships: result.relationships || [],
+          addNode: () => {},
+          addRelationship: () => {},
+          removeNode: () => {},
+          removeRelationship: () => {},
+          clear: () => {},
+          getNodeById: () => null,
+          getRelationshipById: () => null,
+          getNodesByLabel: () => [],
+          getRelationshipsByType: () => [],
+          getConnectedNodes: () => ({ incoming: [], outgoing: [] })
+        },
         fileContents
       };
     } finally {
@@ -125,7 +138,20 @@ export class IngestionService {
       }
 
       return {
-        graph: result.graph!,
+        graph: {
+          nodes: result.nodes || [],
+          relationships: result.relationships || [],
+          addNode: () => {},
+          addRelationship: () => {},
+          removeNode: () => {},
+          removeRelationship: () => {},
+          clear: () => {},
+          getNodeById: () => null,
+          getRelationshipById: () => null,
+          getNodesByLabel: () => [],
+          getRelationshipsByType: () => [],
+          getConnectedNodes: () => ({ incoming: [], outgoing: [] })
+        },
         fileContents
       };
     } finally {

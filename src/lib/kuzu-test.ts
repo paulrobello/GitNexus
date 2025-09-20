@@ -1,4 +1,7 @@
-import { initKuzuDB } from '../core/kuzu/kuzu-loader.js';
+import { initKuzuDB } from '../core/kuzu/kuzu-loader.ts';
+import { KuzuQueryEngine } from '../core/graph/kuzu-query-engine.ts';
+import { KuzuSchemaManager } from '../core/kuzu/kuzu-schema.ts';
+import { KuzuKnowledgeGraph } from '../core/graph/kuzu-knowledge-graph.ts';
 
 /**
  * Simple test to verify KuzuDB integration

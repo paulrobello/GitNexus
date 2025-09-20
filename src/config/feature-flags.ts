@@ -17,6 +17,11 @@ export interface FeatureFlags {
   enableParallelParsing: boolean;
   enableParallelProcessing: boolean;
   
+  // KuzuDB Features
+  enableKuzuDB: boolean;
+  enableKuzuDBPersistence: boolean;
+  enableKuzuDBPerformanceMonitoring: boolean;
+  
   // Debug Features
   enableDebugMode: boolean;
   enablePerformanceLogging: boolean;
@@ -36,6 +41,11 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   enableWorkerPool: true,
   enableParallelParsing: true,
   enableParallelProcessing: true,
+  
+  // KuzuDB Features (disabled by default for safety)
+  enableKuzuDB: false,
+  enableKuzuDBPersistence: false,
+  enableKuzuDBPerformanceMonitoring: false,
   
   // Debug Features
   enableDebugMode: false,
@@ -60,25 +70,47 @@ class FeatureFlagManager {
     // First, override with environment variables
     // In Vite, environment variables are available via import.meta.env
     let parsingMode: string | undefined;
+    let kuzuEnabled: string | undefined;
     
     try {
       // Try to access import.meta.env (available in Vite/ES modules)
-      if (import.meta && import.meta.env && import.meta.env.VITE_PARSING_MODE) {
-        parsingMode = import.meta.env.VITE_PARSING_MODE.toLowerCase();
+      if (import.meta && import.meta.env) {
+        parsingMode = import.meta.env.VITE_PARSING_MODE?.toLowerCase();
+        kuzuEnabled = import.meta.env.VITE_KUZU_ENABLED?.toLowerCase();
       }
     } catch (e) {
       // Fallback to process.env (Node.js environments)
-      if (typeof process !== 'undefined' && process.env && process.env.PARSING_MODE) {
-        parsingMode = process.env.PARSING_MODE.toLowerCase();
+      if (typeof process !== 'undefined' && process.env) {
+        parsingMode = process.env.PARSING_MODE?.toLowerCase();
+        kuzuEnabled = process.env.KUZU_ENABLED?.toLowerCase();
       }
     }
     
+    // Handle parsing mode
     if (parsingMode === 'single' || parsingMode === 'single-threaded') {
       flags.enableParallelParsing = false;
       console.log('🔄 Environment: Parallel parsing disabled via PARSING_MODE=single');
     } else if (parsingMode === 'parallel' || parsingMode === 'multi-threaded') {
       flags.enableParallelParsing = true;
       console.log('🚀 Environment: Parallel parsing enabled via PARSING_MODE=parallel');
+    }
+    
+    // Handle KuzuDB settings
+    console.log(`🔍 Debug: kuzuEnabled from env = "${kuzuEnabled}"`);
+    console.log(`🔍 Debug: import.meta.env.VITE_KUZU_ENABLED = "${import.meta?.env?.VITE_KUZU_ENABLED}"`);
+    
+    if (kuzuEnabled === 'true' || kuzuEnabled === '1' || kuzuEnabled === 'yes') {
+      flags.enableKuzuDB = true;
+      flags.enableKuzuDBPersistence = true;
+      flags.enableKuzuDBPerformanceMonitoring = true;
+      console.log('🗃️ Environment: KuzuDB enabled via VITE_KUZU_ENABLED=true');
+    } else if (kuzuEnabled === 'false' || kuzuEnabled === '0' || kuzuEnabled === 'no') {
+      flags.enableKuzuDB = false;
+      flags.enableKuzuDBPersistence = false;
+      flags.enableKuzuDBPerformanceMonitoring = false;
+      console.log('📄 Environment: KuzuDB disabled via VITE_KUZU_ENABLED=false');
+    } else {
+      console.log(`⚠️ Warning: KuzuDB env var not recognized: "${kuzuEnabled}" - using default: ${flags.enableKuzuDB}`);
     }
     
     // Then, try to load from localStorage (can override environment)
@@ -272,10 +304,13 @@ export const featureFlags = new FeatureFlagManager();
 export const getFeatureFlag = <K extends keyof FeatureFlags>(key: K): FeatureFlags[K] => 
   featureFlags.getFlag(key);
 
+export const getFeatureFlags = (): FeatureFlags => featureFlags.getFlags();
+
 export const setFeatureFlag = <K extends keyof FeatureFlags>(key: K, value: FeatureFlags[K]): void => 
   featureFlags.setFlag(key, value);
 
 export const isKuzuDBEnabled = (): boolean => featureFlags.isKuzuDBEnabled();
+export const isKuzuDBPersistenceEnabled = (): boolean => featureFlags.getFlag('enableKuzuDBPersistence');
 export const isDebugModeEnabled = (): boolean => featureFlags.isDebugModeEnabled();
 export const isPerformanceMonitoringEnabled = (): boolean => featureFlags.isPerformanceMonitoringEnabled();
 export const isWorkerPoolEnabled = (): boolean => featureFlags.getFlag('enableWorkerPool');

@@ -97,4 +97,8 @@ export interface RelationshipProperties {
 export interface KnowledgeGraph {
   nodes: GraphNode[];
   relationships: GraphRelationship[];
+  
+  // Methods for adding nodes and relationships
+  addNode(node: GraphNode): void;
+  addRelationship(relationship: GraphRelationship): void;
 }

@@ -2,7 +2,7 @@ import * as Comlink from 'comlink';
 import { GraphPipeline, type PipelineInput } from '../core/ingestion/pipeline.ts';
 import { ParallelGraphPipeline } from '../core/ingestion/parallel-pipeline.ts';
 import { isParallelParsingEnabled } from '../config/feature-flags.ts';
-import type { KnowledgeGraph } from '../core/graph/types.ts';
+import type { KnowledgeGraph, GraphNode, GraphRelationship } from '../core/graph/types.ts';
 
 export interface IngestionProgress {
   phase: 'structure' | 'parsing' | 'calls' | 'complete';
@@ -13,7 +13,8 @@ export interface IngestionProgress {
 
 export interface IngestionResult {
   success: boolean;
-  graph?: KnowledgeGraph;
+  nodes?: GraphNode[];
+  relationships?: GraphRelationship[];
   error?: string;
   stats?: {
     nodeStats: Record<string, number>;
@@ -118,9 +119,11 @@ export class IngestionWorker {
         relationshipStats[rel.type] = (relationshipStats[rel.type] || 0) + 1;
       });
 
+      // Return only serializable data - nodes and relationships arrays
       return {
         success: true,
-        graph,
+        nodes: graph.nodes,
+        relationships: graph.relationships,
         stats: {
           nodeStats,
           relationshipStats,

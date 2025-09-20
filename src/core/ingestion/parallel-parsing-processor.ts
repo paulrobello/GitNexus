@@ -9,7 +9,7 @@ import {
 import { IGNORE_PATTERNS } from '../../config/language-config.js';
 import { WebWorkerPool, WebWorkerPoolUtils } from '../../lib/web-worker-pool.js';
 import { FunctionRegistryTrie, FunctionDefinition } from '../graph/trie.js';
-import { generateId } from '../../lib/utils.ts';
+import { generateDeterministicId } from '../../lib/utils.ts';
 import Parser from 'web-tree-sitter';
 import { initTreeSitter, loadTypeScriptParser, loadPythonParser, loadJavaScriptParser } from '../tree-sitter/parser-loader.js';
 
@@ -298,8 +298,8 @@ export interface ParallelParsingResult {
 		definition: ParsedDefinition, 
 		graph: KnowledgeGraph
 	): Promise<void> {
-		// Generate unique ID based on file path and definition name (same as single-threaded)
-		const nodeId = generateId(`${definition.type}_${filePath}_${definition.name}_${definition.startLine}`);
+	// Generate unique ID based on file path and definition name (same as single-threaded)
+	const nodeId = generateDeterministicId(definition.type, `${filePath}_${definition.name}_${definition.startLine}`);
 		
 		if (this.duplicateDetector.checkAndMark(nodeId)) {
 			return;
@@ -352,8 +352,8 @@ export interface ParallelParsingResult {
 
 		// If no existing file node found, create one (fallback)
 		if (!fileNode) {
-			fileNode = { 
-				id: generateId(`file_${filePath}`),
+		fileNode = { 
+			id: generateDeterministicId('file', filePath),
 				label: 'File' as NodeLabel,
 				properties: {
 					name: pathUtils.getFileName(filePath),
@@ -366,8 +366,8 @@ export interface ParallelParsingResult {
 		}
 
 		// Add DEFINES relationship from file to definition (same as single-threaded)
-		const definesRelationship: GraphRelationship = {
-			id: generateId('defines'),
+	const definesRelationship: GraphRelationship = {
+		id: generateDeterministicId('defines', `${fileNode.id}-${nodeId}`),
 			type: 'DEFINES' as RelationshipType,
 			source: fileNode.id,
 			target: nodeId,
@@ -382,11 +382,11 @@ export interface ParallelParsingResult {
 		// Add additional relationships like single-threaded version
 		if (definition.extends && definition.extends.length > 0) {
 			definition.extends.forEach(() => {
-				const extendsRelationship: GraphRelationship = { 
-					id: generateId('extends'),
-					type: 'EXTENDS' as RelationshipType,
-					source: nodeId,
-					target: generateId('class'),
+			const extendsRelationship: GraphRelationship = { 
+				id: generateDeterministicId('extends', `${nodeId}-${extendedClass}`),
+				type: 'EXTENDS' as RelationshipType,
+				source: nodeId,
+				target: generateDeterministicId('class', extendedClass),
 					properties: {}
 				};
 
@@ -396,11 +396,11 @@ export interface ParallelParsingResult {
 
 		if (definition.implements && definition.implements.length > 0) {
 			definition.implements.forEach(() => {
-				const implementsRelationship: GraphRelationship = {
-					id: generateId('implements'),
-					type: 'IMPLEMENTS' as RelationshipType,
-					source: nodeId,
-					target: generateId('interface'),
+			const implementsRelationship: GraphRelationship = {
+				id: generateDeterministicId('implements', `${nodeId}-${implementedInterface}`),
+				type: 'IMPLEMENTS' as RelationshipType,
+				source: nodeId,
+				target: generateDeterministicId('interface', implementedInterface),
 					properties: {}
 				};
 
@@ -409,11 +409,11 @@ export interface ParallelParsingResult {
 		}
 
 		if (definition.importPath) {
-			const importRelationship: GraphRelationship = { 
-				id: generateId('imports'),
-				type: 'IMPORTS' as RelationshipType,
-				source: nodeId, 
-				target: generateId('file'),
+		const importRelationship: GraphRelationship = { 
+			id: generateDeterministicId('imports', `${nodeId}-${definition.importPath}`),
+			type: 'IMPORTS' as RelationshipType,
+			source: nodeId, 
+			target: generateDeterministicId('file', definition.importPath || 'unknown'),
 				properties: { 
 					importPath: definition.importPath 
 				}
@@ -422,12 +422,12 @@ export interface ParallelParsingResult {
 		}
 
 		if (definition.parentClass) {			  
-			const parentRelationship: GraphRelationship = {
-				id: generateId('belongs_to'),
-				type: 'BELONGS_TO' as RelationshipType,
-				source: nodeId,
-				target: generateId('class'),
-				properties: { parentClass: definition.parentClass }
+		const parentRelationship: GraphRelationship = {
+			id: generateDeterministicId('belongs_to', `${nodeId}-${definition.parentClass}`),
+			type: 'BELONGS_TO' as RelationshipType,
+			source: nodeId,
+			target: generateDeterministicId('class', definition.parentClass || 'unknown'),
+			properties: { parentClass: definition.parentClass }
 			};
 			graph.addRelationship(parentRelationship);
 		}

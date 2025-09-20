@@ -5,7 +5,7 @@ import { ParsingProcessor } from './parsing-processor.ts';
 import { ParallelParsingProcessor } from './parallel-parsing-processor.ts';
 import { ImportProcessor } from './import-processor.ts';
 import { CallProcessor } from './call-processor.ts';
-import { isParallelParsingEnabled } from '../../config/feature-flags.ts';
+import { isParallelParsingEnabled, isKuzuDBEnabled } from '../../config/feature-flags.ts';
 
 export interface PipelineInput {
   projectRoot: string;
@@ -43,7 +43,8 @@ export class GraphPipeline {
   public async run(input: PipelineInput): Promise<KnowledgeGraph> {
     const { projectRoot, projectName, filePaths, fileContents, options } = input;
     
-    const graph = new SimpleKnowledgeGraph();
+    // Create appropriate graph implementation based on feature flags
+    const graph = await this.createGraph();
 
     const processingMode = isParallelParsingEnabled() ? 'parallel' : 'single-threaded';
     console.log(`🚀 Starting 4-pass ingestion for project: ${projectName} (${processingMode} processing)`);
@@ -81,6 +82,13 @@ export class GraphPipeline {
     
     console.log(`Ingestion complete. Graph contains ${graph.nodes.length} nodes and ${graph.relationships.length} relationships.`);
     
+    // Flush KuzuDB operations and log dual-write statistics if using DualWriteKnowledgeGraph
+    const { DualWriteKnowledgeGraph } = await import('../graph/dual-write-knowledge-graph.ts');
+    if (graph instanceof DualWriteKnowledgeGraph) {
+      await graph.flushKuzuDB();
+      graph.logDualWriteStats();
+    }
+    
     // Debug: Show graph structure
     const nodesByType = graph.nodes.reduce((acc, node) => {
       acc[node.label] = (acc[node.label] || 0) + 1;
@@ -95,6 +103,7 @@ export class GraphPipeline {
     console.log('📊 Graph Statistics:');
     console.log('Nodes by type:', nodesByType);
     console.log('Relationships by type:', relationshipsByType);
+    console.log(`📈 Total entities: ${graph.nodes.length + graph.relationships.length}`);
     
     // Debug: Find isolated nodes (nodes with no relationships)
     const connectedNodeIds = new Set<string>();
@@ -279,5 +288,46 @@ export class GraphPipeline {
 
   public getCallStats() {
     return this.callProcessor.getStats();
+  }
+
+  /**
+   * Create appropriate graph implementation based on feature flags
+   */
+  private async createGraph(): Promise<KnowledgeGraph> {
+    if (isKuzuDBEnabled()) {
+      try {
+        console.log('🚀 Initializing KuzuDB integration...');
+        
+        // Initialize KuzuDB query engine
+        const { KuzuQueryEngine } = await import('../graph/kuzu-query-engine.ts');
+        const queryEngine = new KuzuQueryEngine({
+          enableCache: true,
+          cacheSize: 1000,
+          cacheTTL: 5 * 60 * 1000 // 5 minutes
+        });
+        
+        await queryEngine.initialize();
+        
+        // Create KuzuDB knowledge graph
+        const { KuzuKnowledgeGraph } = await import('../graph/kuzu-knowledge-graph.ts');
+        const kuzuGraph = new KuzuKnowledgeGraph(queryEngine, {
+          enableCache: true,
+          batchSize: 100,
+          autoCommit: false
+        });
+        
+        // Return transparent dual-write graph
+        const { DualWriteKnowledgeGraph } = await import('../graph/dual-write-knowledge-graph.ts');
+        console.log('✅ KuzuDB integration initialized - using dual-write mode');
+        return new DualWriteKnowledgeGraph(kuzuGraph);
+        
+      } catch (error) {
+        console.warn('❌ KuzuDB initialization failed, falling back to JSON-only mode:', error);
+        return new SimpleKnowledgeGraph();
+      }
+    } else {
+      console.log('📝 Using JSON-only storage mode');
+      return new SimpleKnowledgeGraph();
+    }
   }
 } 

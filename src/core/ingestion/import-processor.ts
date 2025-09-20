@@ -57,6 +57,14 @@ export class ImportProcessor {
   private importMap: ImportMap = {};
   private projectFiles: Set<string> = new Set();
 
+  private stats = {
+    nodesProcessed: 0,
+    relationshipsProcessed: 0
+  };
+
+  constructor() {
+  }
+
   /**
    * Process all imports after parsing is complete
    * @param graph The knowledge graph being built
@@ -69,29 +77,40 @@ export class ImportProcessor {
     astMap: Map<string, ParsedAST>,
     fileContents: Map<string, string>
   ): Promise<KnowledgeGraph> {
-    console.log('ImportProcessor: Starting import resolution...');
-    
-    // Build set of all project files for validation
-    this.projectFiles = new Set(fileContents.keys());
-    
-    // Clear previous import map
-    this.importMap = {};
-    
-    let totalImportsFound = 0;
-    let totalImportsResolved = 0;
-    
-    // Process imports for each file
-    for (const [filePath, ast] of astMap) {
-      const fileImports = await this.processFileImports(filePath, ast, graph);
-      totalImportsFound += fileImports.found;
-      totalImportsResolved += fileImports.resolved;
+    try {
+      console.log('📦 ImportProcessor: Starting import resolution...');
+      
+      // Reset statistics
+      this.stats = { nodesProcessed: 0, relationshipsProcessed: 0 };
+      
+      // Build set of all project files for validation
+      this.projectFiles = new Set(fileContents.keys());
+      
+      // Clear previous import map
+      this.importMap = {};
+      
+      let totalImportsFound = 0;
+      let totalImportsResolved = 0;
+      
+      // Process imports for each file
+      for (const [filePath, ast] of astMap) {
+        const fileImports = await this.processFileImports(filePath, ast, graph);
+        totalImportsFound += fileImports.found;
+        totalImportsResolved += fileImports.resolved;
+      }
+      
+      console.log('✅ ImportProcessor: Completed import resolution');
+      console.log(`📊 Found ${totalImportsFound} imports, resolved ${totalImportsResolved} (${totalImportsResolved > 0 ? ((totalImportsResolved/totalImportsFound)*100).toFixed(1) : '0'}%)`);
+      console.log(`📋 Built import map for ${Object.keys(this.importMap).length} files`);
+      console.log(`📊 ImportProcessor: ${this.stats.nodesProcessed} nodes, ${this.stats.relationshipsProcessed} relationships`);
+      
+      return graph;
+    } catch (error) {
+      console.error('❌ ImportProcessor failed:', error);
+      throw error;
+    } finally {
+      // Cleanup resources (if any)
     }
-    
-    console.log('ImportProcessor: Completed import resolution');
-    console.log(`ImportProcessor: Found ${totalImportsFound} imports, resolved ${totalImportsResolved} (${((totalImportsResolved/totalImportsFound)*100).toFixed(1)}%)`);
-    console.log(`ImportProcessor: Built import map for ${Object.keys(this.importMap).length} files`);
-    
-    return graph;
   }
 
   /**
@@ -129,7 +148,7 @@ export class ImportProcessor {
       };
 
       // Create IMPORTS relationship in graph
-      this.createImportRelationship(graph, importInfo);
+      await this.createImportRelationship(graph, importInfo);
       found++;
       if (importInfo.targetFile !== importInfo.exportedName) { // Only count as resolved if it's not a default import
         resolved++;
@@ -606,9 +625,9 @@ export class ImportProcessor {
   }
 
   /**
-   * Create IMPORTS relationship in the graph
+   * Create IMPORTS relationship in the graph with dual-write support
    */
-  private createImportRelationship(graph: KnowledgeGraph, importInfo: ImportInfo): void {
+  private async createImportRelationship(graph: KnowledgeGraph, importInfo: ImportInfo): Promise<void> {
     // Find source and target nodes
     const sourceNode = graph.nodes.find(n => 
       n.label === 'File' && n.properties.filePath === importInfo.importingFile
@@ -639,7 +658,8 @@ export class ImportProcessor {
           }
         };
 
-        graph.relationships.push(relationship);
+        graph.addRelationship(relationship);
+        this.stats.relationshipsProcessed++;
       }
     }
   }
@@ -675,6 +695,16 @@ export class ImportProcessor {
   clear(): void {
     this.importMap = {};
     this.projectFiles.clear();
+  }
+
+  /**
+   * Get processing statistics
+   */
+  public getStats() {
+    return {
+      nodesProcessed: this.stats.nodesProcessed,
+      relationshipsProcessed: this.stats.relationshipsProcessed
+    };
   }
 }
 

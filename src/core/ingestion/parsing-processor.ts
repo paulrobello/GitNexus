@@ -12,7 +12,7 @@ import Parser from 'web-tree-sitter';
 import { TYPESCRIPT_QUERIES, JAVASCRIPT_QUERIES, PYTHON_QUERIES, JAVA_QUERIES } from './tree-sitter-queries';
 import { initTreeSitter, loadTypeScriptParser, loadPythonParser, loadJavaScriptParser } from '../tree-sitter/parser-loader.js';
 import { FunctionRegistryTrie, FunctionDefinition } from '../graph/trie.js';
-import { generateId } from '../../lib/utils';
+import { generateDeterministicId } from '../../lib/utils';
 
 export interface ParsingInput {
 	filePaths: string[];
@@ -55,6 +55,11 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
   private astMap: Map<string, ParsedAST> = new Map();
   private functionTrie: FunctionRegistryTrie = new FunctionRegistryTrie();
 
+	private stats = {
+		nodesProcessed: 0,
+		relationshipsProcessed: 0
+	};
+
 	constructor() {
 		this.memoryManager = MemoryManager.getInstance();
 	}
@@ -71,16 +76,20 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 	public async process(graph: KnowledgeGraph, input: ParsingInput): Promise<void> {
 		const { filePaths, fileContents, options } = input;
 
-		const memoryStats = this.memoryManager.getStats();
-
-		const filteredFiles = this.applyFiltering(filePaths, fileContents, options);
-		
-		const BATCH_SIZE = 10;
-		const sourceFiles = filteredFiles.filter((path: string) => this.isSourceFile(path));
-		const configFiles = filteredFiles.filter((path: string) => this.isConfigFile(path));
-		const allProcessableFiles = [...sourceFiles, ...configFiles];
-		
 		try {
+			// Reset statistics
+			this.stats = { nodesProcessed: 0, relationshipsProcessed: 0 };
+
+			console.log(`🔍 Starting parsing with KuzuDB dual-write for ${filePaths.length} files...`);
+
+			const memoryStats = this.memoryManager.getStats();
+			const filteredFiles = this.applyFiltering(filePaths, fileContents, options);
+			
+			const BATCH_SIZE = 10;
+			const sourceFiles = filteredFiles.filter((path: string) => this.isSourceFile(path));
+			const configFiles = filteredFiles.filter((path: string) => this.isConfigFile(path));
+			const allProcessableFiles = [...sourceFiles, ...configFiles];
+			
 			await this.initializeParser();
 			
 			const batchProcessor = new BatchProcessor<string, void>(BATCH_SIZE, async (filePaths: string[]) => {
@@ -98,18 +107,26 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 						await this.parseFile(graph, filePath, content);
 						this.processedFiles.add(filePath);
 					} catch (error) {
-
+						console.warn(`Failed to parse file ${filePath}:`, error);
 					}
 				}
 				return [];
 			});
 
-			
 			await batchProcessor.processAll(allProcessableFiles);
 			
+			console.log('✅ Parsing completed successfully');
+			console.log(`📊 ParsingProcessor: ${this.stats.nodesProcessed} nodes, ${this.stats.relationshipsProcessed} relationships`);
 
 		} catch (error) {
-
+			console.error('❌ Parsing process failed:', error);
+			throw error;
+		} finally {
+			// Cleanup resources (parser cleanup)
+			if (this.parser) {
+				this.parser.delete();
+				this.parser = null;
+			}
 		}
 	}
 
@@ -582,7 +599,7 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 		// If no existing file node found, create one (fallback)
 		if (!fileNode) {
 			fileNode = {
-				id: generateId(`file_${filePath}`),
+				id: generateDeterministicId('file', filePath),
 				label: 'File' as NodeLabel,
 				properties: {
 					name: pathUtils.getFileName(filePath),
@@ -611,10 +628,10 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 			(node.properties.filePath === filePath || node.properties.path === filePath)
 		);
 
-		// If no existing file node found, create one (fallback)
+		// If no existing file node found, create one (fallback) with dual-write
 		if (!fileNode) {
-			fileNode = { 
-				id: generateId(`file_${filePath}`),
+		fileNode = { 
+			id: generateDeterministicId('file', filePath),
 				label: 'File' as NodeLabel,
 				properties: {
 					name: pathUtils.getFileName(filePath),
@@ -624,11 +641,12 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 				}
 			};
 			graph.addNode(fileNode);
+		this.stats.nodesProcessed++;
 		}
 
 		for (const def of definitions) {
 			// Generate unique ID based on file path and definition name
-			const nodeId = generateId(`${def.type}_${filePath}_${def.name}_${def.startLine}`);
+			const nodeId = generateDeterministicId(def.type, `${filePath}_${def.name}_${def.startLine}`);
 
 			if (this.duplicateDetector.checkAndMark(nodeId)) continue;
 
@@ -657,6 +675,7 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 			};
 
 			graph.addNode(node);
+		this.stats.nodesProcessed++;
 
       if (def.type === 'function' || def.type === 'method' || def.type === 'class' || def.type === 'interface') {
         const functionDef: FunctionDefinition = {
@@ -671,8 +690,8 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
         this.functionTrie.addDefinition(functionDef);
       }
 
-			const definesRelationship: GraphRelationship = {
-				id: generateId('defines'),
+		const definesRelationship: GraphRelationship = {
+			id: generateDeterministicId('defines', `${fileNode.id}-${node.id}`),
 				type: 'DEFINES' as RelationshipType,
 				source: fileNode.id,
 				target: node.id,
@@ -683,57 +702,62 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 			};
 
 			graph.addRelationship(definesRelationship);
+		this.stats.relationshipsProcessed++;
 
 			if (def.extends && def.extends.length > 0) {
-				def.extends.forEach(() => {
-					const extendsRelationship: GraphRelationship = { 
-						id: generateId('extends'),
-						type: 'EXTENDS' as RelationshipType,
-						source: node.id,
-						target: generateId('class'),
+				for (const extendedClass of def.extends) {
+				const extendsRelationship: GraphRelationship = { 
+					id: generateDeterministicId('extends', `${node.id}-${extendedClass}`),
+					type: 'INHERITS' as RelationshipType,
+					source: node.id,
+					target: generateDeterministicId('class', extendedClass),
 						properties: {}
 					};
 
 					graph.addRelationship(extendsRelationship);
-				});
+				this.stats.relationshipsProcessed++;
+				}
 			}
 
 			if (def.implements && def.implements.length > 0) {
-				def.implements.forEach(() => {
-					const implementsRelationship: GraphRelationship = {
-						id: generateId('implements'),
-						type: 'IMPLEMENTS' as RelationshipType,
-						source: node.id,
-						target: generateId('interface'),
+				for (const implementedInterface of def.implements) {
+				const implementsRelationship: GraphRelationship = {
+					id: generateDeterministicId('implements', `${node.id}-${implementedInterface}`),
+					type: 'IMPLEMENTS' as RelationshipType,
+					source: node.id,
+					target: generateDeterministicId('interface', implementedInterface),
 						properties: {}
 					};
 
 					graph.addRelationship(implementsRelationship);
-				});
+				this.stats.relationshipsProcessed++;
+				}
 			}
 
 			if (def.importPath) {
-				const importRelationship: GraphRelationship = { 
-					id: generateId('imports'),
-					type: 'IMPORTS' as RelationshipType,
-					source: node.id, 
-					target: generateId('file'),
+			const importRelationship: GraphRelationship = { 
+				id: generateDeterministicId('imports', `${node.id}-${def.importPath}`),
+				type: 'IMPORTS' as RelationshipType,
+				source: node.id, 
+				target: generateDeterministicId('file', def.importPath || 'unknown'),
 					properties: { 
 						importPath: def.importPath 
 					}
 				};
 				graph.addRelationship(importRelationship);
+			this.stats.relationshipsProcessed++;
 			}
 
 			if (def.parentClass) {			  
-				const parentRelationship: GraphRelationship = {
-					id: generateId('belongs_to'),
-					type: 'BELONGS_TO' as RelationshipType,
-					source: node.id,
-					target: generateId('class'), 
+			const parentRelationship: GraphRelationship = {
+				id: generateDeterministicId('belongs_to', `${node.id}-${def.parentClass}`),
+				type: 'BELONGS_TO' as RelationshipType,
+				source: node.id,
+				target: generateDeterministicId('class', def.parentClass || 'unknown'),
 					properties: {}
 				};
 				graph.addRelationship(parentRelationship);
+			this.stats.relationshipsProcessed++;
 			}
 		}
 	}
@@ -867,6 +891,16 @@ export class ParsingProcessor implements GraphProcessor<ParsingInput> {
 			contentLength: content.length,
 			queryResults,
 			extractionIssues
+		};
+	}
+
+	/**
+	 * Get processing statistics
+	 */
+	public getStats() {
+		return {
+			nodesProcessed: this.stats.nodesProcessed,
+			relationshipsProcessed: this.stats.relationshipsProcessed
 		};
 	}
 }
