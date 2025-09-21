@@ -5,7 +5,11 @@ import { ParallelParsingProcessor } from './parallel-parsing-processor.ts';
 import { ImportProcessor } from './import-processor.ts';
 import { CallProcessor } from './call-processor.ts';
 import { WebWorkerPoolUtils } from '../../lib/web-worker-pool.js';
+<<<<<<< HEAD
 import { isKuzuDBEnabled, isKuzuDBDirectWritesEnabled } from '../../config/feature-flags.ts';
+=======
+import { isKuzuDBEnabled } from '../../config/feature-flags.ts';
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
 
 export interface PipelineInput {
   projectRoot: string;
@@ -134,6 +138,7 @@ export class ParallelGraphPipeline {
         console.log('🔧 Worker Pool Statistics:', workerStats);
       }
 
+<<<<<<< HEAD
       // Handle post-processing based on graph type
       if ('flushPendingOperations' in graph) {
         // DirectWriteKnowledgeGraph - flush any remaining operations
@@ -143,6 +148,10 @@ export class ParallelGraphPipeline {
       } else if ('flushKuzuDB' in graph) {
         // DualWriteKnowledgeGraph - traditional batch flush
         console.log('🔄 Flushing batched KuzuDB operations...');
+=======
+      // Flush KuzuDB operations and log dual-write statistics if using DualWriteKnowledgeGraph
+      if ('flushKuzuDB' in graph) {
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
         await (graph as any).flushKuzuDB();
         (graph as any).logDualWriteStats();
       }
@@ -262,7 +271,10 @@ export class ParallelGraphPipeline {
    */
   private async createGraph(): Promise<KnowledgeGraph> {
     console.log(`🔍 KuzuDB enabled check: ${isKuzuDBEnabled()}`);
+<<<<<<< HEAD
     console.log(`⚡ KuzuDB direct writes check: ${isKuzuDBDirectWritesEnabled()}`);
+=======
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
     
     if (isKuzuDBEnabled()) {
       try {
@@ -286,6 +298,7 @@ export class ParallelGraphPipeline {
           autoCommit: false
         });
         
+<<<<<<< HEAD
         // Choose between direct-write and dual-write based on feature flag
         if (isKuzuDBDirectWritesEnabled()) {
           const { DirectWriteKnowledgeGraph } = await import('../graph/direct-write-knowledge-graph.ts');
@@ -301,6 +314,12 @@ export class ParallelGraphPipeline {
           console.log('✅ KuzuDB integration initialized - using dual-write mode (with flush)');
           return new DualWriteKnowledgeGraph(kuzuGraph);
         }
+=======
+        // Return transparent dual-write graph
+        const { DualWriteKnowledgeGraph } = await import('../graph/dual-write-knowledge-graph.ts');
+        console.log('✅ KuzuDB integration initialized - using dual-write mode');
+        return new DualWriteKnowledgeGraph(kuzuGraph);
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
         
       } catch (error) {
         console.warn('❌ KuzuDB initialization failed, falling back to JSON-only mode:', error);

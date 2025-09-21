@@ -24,6 +24,10 @@ export interface KuzuGraphOptions {
  */
 export class KuzuKnowledgeGraph implements KnowledgeGraph {
   private queryEngine: KuzuQueryEngine;
+<<<<<<< HEAD
+=======
+  private options: KuzuGraphOptions;
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
   private pendingNodes: GraphNode[] = [];
   private pendingRelationships: GraphRelationship[] = [];
   private nodeCache: Map<string, GraphNode> = new Map();
@@ -71,7 +75,11 @@ export class KuzuKnowledgeGraph implements KnowledgeGraph {
   /**
    * Commit a single node with auto-recovery for missing tables
    */
+<<<<<<< HEAD
   public async commitSingleNode(node: GraphNode): Promise<void> {
+=======
+  private async commitSingleNode(node: GraphNode): Promise<void> {
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
     try {
       const tableName = node.label;
       
@@ -121,7 +129,11 @@ export class KuzuKnowledgeGraph implements KnowledgeGraph {
   /**
    * Commit a single relationship with auto-recovery for missing tables
    */
+<<<<<<< HEAD
   public async commitSingleRelationship(rel: GraphRelationship): Promise<void> {
+=======
+  private async commitSingleRelationship(rel: GraphRelationship): Promise<void> {
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
     try {
       await this.queryEngine.executeQuery(
         `MATCH (a {id: '${rel.source}'}), (b {id: '${rel.target}'}) MERGE (a)-[:${rel.type} ${this.formatPropertiesForQuery(rel.properties)}]->(b)`

@@ -21,7 +21,10 @@ export interface FeatureFlags {
   enableKuzuDB: boolean;
   enableKuzuDBPersistence: boolean;
   enableKuzuDBPerformanceMonitoring: boolean;
+<<<<<<< HEAD
   enableKuzuDBDirectWrites: boolean;
+=======
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
   
   // Debug Features
   enableDebugMode: boolean;
@@ -47,7 +50,10 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   enableKuzuDB: false,
   enableKuzuDBPersistence: false,
   enableKuzuDBPerformanceMonitoring: false,
+<<<<<<< HEAD
   enableKuzuDBDirectWrites: false,
+=======
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
   
   // Debug Features
   enableDebugMode: false,
@@ -115,6 +121,7 @@ class FeatureFlagManager {
       console.log(`⚠️ Warning: KuzuDB env var not recognized: "${kuzuEnabled}" - using default: ${flags.enableKuzuDB}`);
     }
     
+<<<<<<< HEAD
     // Handle KuzuDB Direct Writes settings
     let directWritesEnabled: string | undefined;
     try {
@@ -139,6 +146,8 @@ class FeatureFlagManager {
       console.log(`⚠️ Warning: KuzuDB direct writes env var not recognized: "${directWritesEnabled}" - using default: ${flags.enableKuzuDBDirectWrites}`);
     }
     
+=======
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
     // Then, try to load from localStorage (can override environment)
     // Only try localStorage if we're in a browser context (not in workers)
     try {
@@ -337,7 +346,10 @@ export const setFeatureFlag = <K extends keyof FeatureFlags>(key: K, value: Feat
 
 export const isKuzuDBEnabled = (): boolean => featureFlags.isKuzuDBEnabled();
 export const isKuzuDBPersistenceEnabled = (): boolean => featureFlags.getFlag('enableKuzuDBPersistence');
+<<<<<<< HEAD
 export const isKuzuDBDirectWritesEnabled = (): boolean => featureFlags.getFlag('enableKuzuDBDirectWrites');
+=======
+>>>>>>> f8ce76cfe1df1b6682e8f921e51c532978b30f84
 export const isDebugModeEnabled = (): boolean => featureFlags.isDebugModeEnabled();
 export const isPerformanceMonitoringEnabled = (): boolean => featureFlags.isPerformanceMonitoringEnabled();
 export const isWorkerPoolEnabled = (): boolean => featureFlags.getFlag('enableWorkerPool');
