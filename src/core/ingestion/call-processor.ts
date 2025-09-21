@@ -2,7 +2,7 @@ import type { KnowledgeGraph, GraphRelationship } from '../graph/types.ts';
 import type { ParsedAST } from './parsing-processor.ts';
 import type { ImportMap } from './import-processor.ts';
 import { FunctionRegistryTrie } from '../graph/trie.ts';
-import { generateId } from '../../lib/utils.ts';
+import { generateDeterministicId } from '../../lib/utils.ts';
 import Parser from 'web-tree-sitter';
 
 // Simple path utilities for browser compatibility
@@ -40,7 +40,7 @@ export class CallProcessor {
   private astMap: Map<string, ParsedAST> = new Map();
   
   // Statistics
-  private stats = {
+  private processorStats = {
     totalCalls: 0,
     exactMatches: 0,
     sameFileMatches: 0,
@@ -52,6 +52,22 @@ export class CallProcessor {
       externalLibraries: 0,    // Calls to external/stdlib functions (expected)
       pythonBuiltins: 0,       // Python built-in functions (expected)
       actualFailures: 0        // Real resolution failures (unexpected)
+    }
+  };
+
+  private stats = {
+    nodesProcessed: 0,
+    relationshipsProcessed: 0,
+    totalCalls: 0,
+    exactMatches: 0,
+    sameFileMatches: 0,
+    heuristicMatches: 0,
+    failed: 0,
+    callTypes: {} as Record<string, number>,
+    failuresByCategory: {
+      externalLibraries: 0,
+      ambiguousMatches: 0,
+      actualFailures: 0
     }
   };
 
@@ -68,19 +84,45 @@ export class CallProcessor {
     astMap: Map<string, ParsedAST>,
     importMap: ImportMap
   ): Promise<KnowledgeGraph> {
-    this.importMap = importMap;
-    this.astMap = astMap;
-    this.resetStats();
+    try {
+      console.log('📞 CallProcessor: Starting call resolution...');
 
-    // Process calls for each file
-    for (const [filePath, ast] of astMap) {
-      if (ast.tree) {
-        await this.processFileCalls(filePath, ast, graph);
+      this.importMap = importMap;
+      this.astMap = astMap;
+      // Reset statistics
+      this.stats = {
+        nodesProcessed: 0,
+        relationshipsProcessed: 0,
+        totalCalls: 0,
+        exactMatches: 0,
+        sameFileMatches: 0,
+        heuristicMatches: 0,
+        failed: 0,
+        callTypes: {},
+        failuresByCategory: {
+          externalLibraries: 0,
+          ambiguousMatches: 0,
+          actualFailures: 0
+        }
+      };
+
+      // Process calls for each file
+      for (const [filePath, ast] of astMap) {
+        if (ast.tree) {
+          await this.processFileCalls(filePath, ast, graph);
+        }
       }
-    }
 
-    this.logStats();
-    return graph;
+      console.log('✅ CallProcessor: Completed call resolution');
+      this.logProcessorStats();
+
+      return graph;
+    } catch (error) {
+      console.error('❌ CallProcessor failed:', error);
+      throw error;
+    } finally {
+      // Cleanup resources (if any)
+    }
   }
 
   private async processFileCalls(
@@ -97,7 +139,7 @@ export class CallProcessor {
       const resolution = await this.resolveCall(call);
       
       if (resolution.success && resolution.targetNodeId) {
-        this.createCallRelationship(graph, call, resolution.targetNodeId);
+        await this.createCallRelationship(graph, call, resolution.targetNodeId);
         
         // Update statistics
         switch (resolution.stage) {
@@ -113,8 +155,8 @@ export class CallProcessor {
         }
       } else {
         this.stats.failed++;
-        // Categorize the failure for better statistics
-        this.categorizeFailureWithReason(call, this.diagnoseFailure(call));
+        // TODO: Implement failure categorization
+        // this.categorizeFailureWithReason(call, this.diagnoseFailure(call));
       }
     }
   }
@@ -717,19 +759,19 @@ export class CallProcessor {
   }
 
   /**
-   * Create CALLS relationship in the graph
+   * Create CALLS relationship in the graph with dual-write support
    */
-  private createCallRelationship(
+  private async createCallRelationship(
     graph: KnowledgeGraph,
     call: CallInfo,
     targetNodeId: string
-  ): void {
+  ): Promise<void> {
     // Find the caller node (could be a function, method, or file)
     const callerNode = this.findCallerNode(graph, call);
     
     if (callerNode) {
       const relationship: GraphRelationship = {
-        id: generateId('calls'),
+        id: generateDeterministicId('calls', `${callerNode.id}-${targetNodeId}-${call.functionName}`),
         type: 'CALLS',
         source: callerNode.id,
         target: targetNodeId,
@@ -749,7 +791,8 @@ export class CallProcessor {
       );
 
       if (!existingRel) {
-        graph.relationships.push(relationship);
+        graph.addRelationship(relationship);
+        this.stats.relationshipsProcessed++;
       }
     }
   }
@@ -812,8 +855,8 @@ export class CallProcessor {
   /**
    * Reset statistics
    */
-  private resetStats(): void {
-    this.stats = {
+  protected resetStats(): void {
+    this.processorStats = {
       totalCalls: 0,
       exactMatches: 0,
       sameFileMatches: 0,
@@ -835,12 +878,6 @@ export class CallProcessor {
     // Keeping minimal essential logging
   }
 
-  /**
-   * Get resolution statistics
-   */
-  getStats() {
-    return this.stats;
-  }
 
   /**
    * Clear all data
@@ -859,7 +896,7 @@ export class CallProcessor {
     if (this.shouldIgnoreCall(call.functionName, call.callerFile)) {
       // It's a call we expect to fail (external library or built-in)
       if (call.callerFile.endsWith('.py')) {
-        this.stats.failuresByCategory.pythonBuiltins++;
+        this.stats.failuresByCategory.ambiguousMatches++;
       } else {
         this.stats.failuresByCategory.externalLibraries++;
       }
@@ -909,5 +946,52 @@ export class CallProcessor {
     const sourceExtensions = ['.py', '.js', '.ts', '.jsx', '.tsx'];
     const ext = pathUtils.extname(filePath).toLowerCase();
     return sourceExtensions.includes(ext);
+  }
+
+  /**
+   * Log processor-specific statistics
+   */
+  private logProcessorStats(): void {
+    const stats = this.stats;
+    const total = stats.totalCalls;
+    const resolved = stats.exactMatches + stats.sameFileMatches + stats.heuristicMatches;
+    const resolutionRate = total > 0 ? ((resolved / total) * 100).toFixed(1) : '0';
+
+    console.log('📊 CallProcessor Statistics:');
+    console.log(`  Total calls found: ${total}`);
+    console.log(`  Successfully resolved: ${resolved} (${resolutionRate}%)`);
+    console.log(`  - Exact matches: ${stats.exactMatches}`);
+    console.log(`  - Same file matches: ${stats.sameFileMatches}`);
+    console.log(`  - Heuristic matches: ${stats.heuristicMatches}`);
+    console.log(`  Failed to resolve: ${stats.failed}`);
+    
+    if (Object.keys(stats.callTypes).length > 0) {
+      console.log('  Call types:');
+      for (const [type, count] of Object.entries(stats.callTypes)) {
+        console.log(`    ${type}: ${count}`);
+      }
+    }
+
+    console.log('  Failure breakdown:');
+    console.log(`    External libraries: ${stats.failuresByCategory.externalLibraries}`);
+    console.log(`    Ambiguous matches: ${stats.failuresByCategory.ambiguousMatches}`);
+    console.log(`    Actual failures: ${stats.failuresByCategory.actualFailures}`);
+  }
+
+  /**
+   * Get processing statistics
+   */
+  public getStats() {
+    return {
+      nodesProcessed: this.stats.nodesProcessed,
+      relationshipsProcessed: this.stats.relationshipsProcessed,
+      totalCalls: this.stats.totalCalls,
+      exactMatches: this.stats.exactMatches,
+      sameFileMatches: this.stats.sameFileMatches,
+      heuristicMatches: this.stats.heuristicMatches,
+      failed: this.stats.failed,
+      callTypes: { ...this.stats.callTypes },
+      failuresByCategory: { ...this.stats.failuresByCategory }
+    };
   }
 }

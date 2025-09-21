@@ -5,6 +5,7 @@ import { ParallelParsingProcessor } from './parallel-parsing-processor.ts';
 import { ImportProcessor } from './import-processor.ts';
 import { CallProcessor } from './call-processor.ts';
 import { WebWorkerPoolUtils } from '../../lib/web-worker-pool.js';
+import { isKuzuDBEnabled, isKuzuDBDirectWritesEnabled } from '../../config/feature-flags.ts';
 
 export interface PipelineInput {
   projectRoot: string;
@@ -63,7 +64,8 @@ export class ParallelGraphPipeline {
   public async run(input: PipelineInput): Promise<KnowledgeGraph> {
     const { projectRoot, projectName, filePaths, fileContents, options } = input;
     
-    const graph = new SimpleKnowledgeGraph();
+    // Create appropriate graph implementation based on feature flags
+    const graph = await this.createGraph();
     const startTime = performance.now();
 
     console.log(`🚀 Starting parallel 4-pass ingestion for project: ${projectName}`);
@@ -131,6 +133,21 @@ export class ParallelGraphPipeline {
       if (workerStats) {
         console.log('🔧 Worker Pool Statistics:', workerStats);
       }
+
+      // Handle post-processing based on graph type
+      if ('flushPendingOperations' in graph) {
+        // DirectWriteKnowledgeGraph - flush any remaining operations
+        console.log('⚡ Flushing any remaining direct-write operations...');
+        await (graph as any).flushPendingOperations();
+        (graph as any).logStats();
+      } else if ('flushKuzuDB' in graph) {
+        // DualWriteKnowledgeGraph - traditional batch flush
+        console.log('🔄 Flushing batched KuzuDB operations...');
+        await (graph as any).flushKuzuDB();
+        (graph as any).logDualWriteStats();
+      }
+
+      console.log(`📈 Total entities: ${graph.nodes.length + graph.relationships.length}`);
       
       return graph;
       
@@ -238,5 +255,60 @@ export class ParallelGraphPipeline {
    */
   public static getHardwareConcurrency(): number {
     return WebWorkerPoolUtils.getHardwareConcurrency();
+  }
+
+  /**
+   * Create appropriate graph implementation based on feature flags
+   */
+  private async createGraph(): Promise<KnowledgeGraph> {
+    console.log(`🔍 KuzuDB enabled check: ${isKuzuDBEnabled()}`);
+    console.log(`⚡ KuzuDB direct writes check: ${isKuzuDBDirectWritesEnabled()}`);
+    
+    if (isKuzuDBEnabled()) {
+      try {
+        console.log('🚀 Initializing KuzuDB integration...');
+        
+        // Initialize KuzuDB query engine
+        const { KuzuQueryEngine } = await import('../graph/kuzu-query-engine.ts');
+        const queryEngine = new KuzuQueryEngine({
+          enableCache: true,
+          cacheSize: 1000,
+          cacheTTL: 5 * 60 * 1000 // 5 minutes
+        });
+        
+        await queryEngine.initialize();
+        
+        // Create KuzuDB knowledge graph
+        const { KuzuKnowledgeGraph } = await import('../graph/kuzu-knowledge-graph.ts');
+        const kuzuGraph = new KuzuKnowledgeGraph(queryEngine, {
+          enableCache: true,
+          batchSize: 100,
+          autoCommit: false
+        });
+        
+        // Choose between direct-write and dual-write based on feature flag
+        if (isKuzuDBDirectWritesEnabled()) {
+          const { DirectWriteKnowledgeGraph } = await import('../graph/direct-write-knowledge-graph.ts');
+          console.log('⚡ KuzuDB integration initialized - using DIRECT-WRITE mode (no flush delay!)');
+          return new DirectWriteKnowledgeGraph(kuzuGraph, {
+            enableDirectWrites: true,
+            maxConcurrentWrites: 10,
+            fallbackToBatching: true,
+            retryAttempts: 3
+          });
+        } else {
+          const { DualWriteKnowledgeGraph } = await import('../graph/dual-write-knowledge-graph.ts');
+          console.log('✅ KuzuDB integration initialized - using dual-write mode (with flush)');
+          return new DualWriteKnowledgeGraph(kuzuGraph);
+        }
+        
+      } catch (error) {
+        console.warn('❌ KuzuDB initialization failed, falling back to JSON-only mode:', error);
+        return new SimpleKnowledgeGraph();
+      }
+    } else {
+      console.log('📝 Using JSON-only storage mode');
+      return new SimpleKnowledgeGraph();
+    }
   }
 }
