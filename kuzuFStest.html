@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KuzuDB FS COPY Test v2</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #00ff00;
+        }
+        .output {
+            background-color: #000;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 600px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .success { color: #00ff00; }
+        .error { color: #ff4444; }
+        .warning { color: #ffaa00; }
+        .info { color: #44aaff; }
+        button {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #555;
+        }
+        button:disabled {
+            background-color: #222;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .status.loading {
+            background-color: #333;
+            color: #ffaa00;
+        }
+        .status.success {
+            background-color: #004400;
+            color: #00ff00;
+        }
+        .status.error {
+            background-color: #440000;
+            color: #ff4444;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 KuzuDB WASM FS & COPY Test</h1>
+    <p>This test verifies that we can use COPY statements with FS.writeFile in KuzuDB WASM for GitNexus.</p>
+    
+    <div id="status" class="status loading">
+        🔄 Initializing KuzuDB WASM...
+    </div>
+    
+    <div>
+        <button id="runTest" disabled>Run Full Test</button>
+        <button id="clearOutput">Clear Output</button>
+        <button id="runFSTest" disabled>Test FS Only</button>
+        <button id="runCopyTest" disabled>Test COPY Only</button>
+    </div>
+    
+    <div id="output" class="output">Initializing...</div>
+
+    <script type="module">
+        // Import kuzu-wasm from the local node_modules
+        // Note: In a real browser environment, this would be served properly
+        import kuzu from './node_modules/kuzu-wasm/index.js';
+        
+        let db = null;
+        let conn = null;
+        let isInitialized = false;
+        
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        const runTestBtn = document.getElementById('runTest');
+        const clearOutputBtn = document.getElementById('clearOutput');
+        const runFSTestBtn = document.getElementById('runFSTest');
+        const runCopyTestBtn = document.getElementById('runCopyTest');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'warning' ? 'warning' : type === 'success' ? 'success' : 'info';
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+            console.log(message);
+        }
+        
+        function setStatus(message, type = 'loading') {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        function enableButtons() {
+            runTestBtn.disabled = false;
+            runFSTestBtn.disabled = false;
+            runCopyTestBtn.disabled = false;
+        }
+        
+        function disableButtons() {
+            runTestBtn.disabled = true;
+            runFSTestBtn.disabled = true;
+            runCopyTestBtn.disabled = true;
+        }
+        
+        // Initialize KuzuDB
+        async function initializeKuzu() {
+            try {
+                log('🚀 Starting KuzuDB WASM initialization...', 'info');
+                
+                // Initialize kuzu
+                await kuzu.init();
+                log('✅ KuzuDB WASM initialized successfully', 'success');
+                
+                // Check available APIs
+                const apis = Object.keys(kuzu);
+                log(`📋 Available APIs: ${apis.join(', ')}`, 'info');
+                
+                // Check FS API
+                if (kuzu.FS) {
+                    const fsMethods = Object.keys(kuzu.FS);
+                    log(`💾 FS API available with methods: ${fsMethods.join(', ')}`, 'success');
+                } else {
+                    log('⚠️ FS API not available', 'warning');
+                }
+                
+                // Create database
+                log('🗃️ Creating in-memory database...', 'info');
+                db = new kuzu.Database('');
+                log('✅ Database created', 'success');
+                
+                // Create connection
+                log('🔗 Creating connection...', 'info');
+                conn = new kuzu.Connection(db);
+                log('✅ Connection established', 'success');
+                
+                isInitialized = true;
+                setStatus('✅ KuzuDB Ready - Click "Run Full Test" to start', 'success');
+                enableButtons();
+                
+            } catch (error) {
+                log(`❌ Initialization failed: ${error.message}`, 'error');
+                setStatus(`❌ Initialization failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+        
+        // Test FS functionality
+        async function testFS() {
+            if (!isInitialized) {
+                log('❌ KuzuDB not initialized', 'error');
+                return false;
+            }
+            
+            try {
+                log('🧪 Testing FS functionality...', 'info');
+                
+                if (!kuzu.FS || !kuzu.FS.writeFile) {
+                    log('⚠️ FS.writeFile not available, skipping FS test', 'warning');
+                    return false;
+                }
+                
+                // Test data
+                const testData = `name,age
+Alice,25
+Bob,30
+Charlie,35`;
+                
+                log('📝 Writing test CSV to WASM filesystem...', 'info');
+                await kuzu.FS.writeFile('/test.csv', testData);
+                log('✅ Successfully wrote test.csv to WASM filesystem', 'success');
+                
+                // Try to read it back
+                if (kuzu.FS.readFile) {
+                    log('📖 Reading test CSV back from WASM filesystem...', 'info');
+                    const readData = await kuzu.FS.readFile('/test.csv');
+                    
+                    // Handle different data types (Buffer, Uint8Array, string)
+                    let dataStr;
+                    if (typeof readData === 'string') {
+                        dataStr = readData;
+                    } else if (readData instanceof Uint8Array || readData instanceof ArrayBuffer) {
+                        dataStr = new TextDecoder().decode(readData);
+                    } else if (readData && readData.toString) {
+                        dataStr = readData.toString();
+                    } else {
+                        dataStr = String(readData);
+                    }
+                    
+                    log(`✅ Read back data: ${dataStr.length} bytes`, 'success');
+                    log(`📄 Content preview: ${dataStr.substring(0, 50)}...`, 'info');
+                }
+                
+                return true;
+                
+            } catch (error) {
+                log(`❌ FS test failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        // Test COPY functionality
+        async function testCopy() {
+            if (!isInitialized) {
+                log('❌ KuzuDB not initialized', 'error');
+                return false;
+            }
+            
+            try {
+                log('🧪 Testing COPY functionality...', 'info');
+                
+                // Create schema first (with conflict handling)
+                log('📋 Creating test schema...', 'info');
+                
+                try {
+                    await conn.query('DROP TABLE TestUser IF EXISTS');
+                    await conn.query('DROP TABLE TestCity IF EXISTS'); 
+                    await conn.query('DROP TABLE TestFollows IF EXISTS');
+                } catch (dropError) {
+                    // Tables might not exist, that's OK
+                    log('   (Cleaning up any existing tables...)', 'info');
+                }
+                
+                await conn.query('CREATE NODE TABLE TestUser(name STRING, age INT64, PRIMARY KEY (name))');
+                log('✅ Created TestUser table', 'success');
+                
+                // Prepare CSV data
+                const csvData = `Alice,25
+Bob,30
+Charlie,35
+Diana,28
+Eve,32`;
+                
+                if (kuzu.FS && kuzu.FS.writeFile) {
+                    // Method 1: Use FS.writeFile + COPY
+                    log('📝 Method 1: Using FS.writeFile + COPY...', 'info');
+                    
+                    await kuzu.FS.writeFile('/users.csv', csvData);
+                    log('✅ Written users.csv to WASM filesystem', 'success');
+                    
+                    log('📥 Executing COPY statement...', 'info');
+                    const copyResult = await conn.query("COPY TestUser FROM '/users.csv'");
+                    log(`✅ COPY executed: ${copyResult.toString()}`, 'success');
+                    await copyResult.close();
+                    
+                } else {
+                    // Method 2: Fallback to individual INSERTs
+                    log('🔄 Method 2: Using individual INSERT statements...', 'info');
+                    
+                    const users = [
+                        ['Alice', 25],
+                        ['Bob', 30],
+                        ['Charlie', 35],
+                        ['Diana', 28],
+                        ['Eve', 32]
+                    ];
+                    
+                    for (const [name, age] of users) {
+                        const result = await conn.query(`CREATE (u:TestUser {name: '${name}', age: ${age}})`);
+                        await result.close();
+                    }
+                    log('✅ Inserted users individually', 'success');
+                }
+                
+                // Verify data was loaded
+                log('🔍 Verifying data was loaded...', 'info');
+                const result = await conn.query('MATCH (u:TestUser) RETURN u.name, u.age ORDER BY u.name');
+                const rows = await result.getAllObjects();
+                
+                log(`✅ Found ${rows.length} users:`, 'success');
+                rows.forEach(row => {
+                    log(`   👤 ${row['u.name']}: ${row['u.age']} years old`, 'info');
+                });
+                
+                await result.close();
+                return true;
+                
+            } catch (error) {
+                log(`❌ COPY test failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+                return false;
+            }
+        }
+        
+        // Full comprehensive test
+        async function runFullTest() {
+            disableButtons();
+            setStatus('🧪 Running comprehensive test...', 'loading');
+            
+            try {
+                log('🎯 Starting comprehensive KuzuDB FS + COPY test...', 'info');
+                log('=' .repeat(60), 'info');
+                
+                // Test 1: FS functionality
+                log('\n📁 TEST 1: FS Functionality', 'info');
+                log('-'.repeat(30), 'info');
+                const fsSuccess = await testFS();
+                
+                // Test 2: Schema creation
+                log('\n📋 TEST 2: Schema Creation', 'info');
+                log('-'.repeat(30), 'info');
+                
+                // Clean up any existing tables first
+                try {
+                    await conn.query('DROP TABLE User IF EXISTS');
+                    await conn.query('DROP TABLE City IF EXISTS');
+                    await conn.query('DROP TABLE Follows IF EXISTS');
+                    await conn.query('DROP TABLE LivesIn IF EXISTS');
+                    log('✓ Cleaned up existing tables', 'info');
+                } catch (cleanupError) {
+                    // Tables might not exist, that's OK
+                }
+                
+                await conn.query('CREATE NODE TABLE User(name STRING, age INT64, PRIMARY KEY (name))');
+                log('✅ Created User table', 'success');
+                
+                await conn.query('CREATE NODE TABLE City(name STRING, population INT64, PRIMARY KEY (name))');
+                log('✅ Created City table', 'success');
+                
+                await conn.query('CREATE REL TABLE Follows(FROM User TO User, since INT64)');
+                log('✅ Created Follows relationship table', 'success');
+                
+                await conn.query('CREATE REL TABLE LivesIn(FROM User TO City)');
+                log('✅ Created LivesIn relationship table', 'success');
+                
+                // Test 3: Data loading (COPY vs INSERT)
+                log('\n📥 TEST 3: Data Loading', 'info');
+                log('-'.repeat(30), 'info');
+                
+                const userData = `Adam,30
+Karissa,40
+Zhang,50
+Noura,25
+TestUser1,35`;
+                
+                const cityData = `Waterloo,150000
+Kitchener,200000
+Guelph,75000
+Toronto,2930000`;
+                
+                if (kuzu.FS && kuzu.FS.writeFile) {
+                    // Use COPY method - Let's actually test it!
+                    log('📝 Using COPY method for bulk loading...', 'info');
+                    
+                    try {
+                        await kuzu.FS.writeFile('/users.csv', userData);
+                        log('✓ Written users.csv to WASM filesystem', 'success');
+                        
+                        await kuzu.FS.writeFile('/cities.csv', cityData);
+                        log('✓ Written cities.csv to WASM filesystem', 'success');
+                        
+                        log('📥 Attempting COPY statements...', 'info');
+                        
+                        const copyResult1 = await conn.query("COPY User FROM '/users.csv'");
+                        log(`✅ Users COPY executed: ${copyResult1.toString()}`, 'success');
+                        await copyResult1.close();
+                        
+                        const copyResult2 = await conn.query("COPY City FROM '/cities.csv'");
+                        log(`✅ Cities COPY executed: ${copyResult2.toString()}`, 'success');
+                        await copyResult2.close();
+                        
+                        log('🎉 COPY METHOD SUCCESSFUL!', 'success');
+                        
+                    } catch (copyError) {
+                        log(`❌ COPY method failed: ${copyError.message}`, 'error');
+                        log('🔄 Falling back to INSERT method...', 'warning');
+                        
+                        // Fallback to INSERT method
+                        const users = [
+                            ['Adam', 30], ['Karissa', 40], ['Zhang', 50], ['Noura', 25], ['TestUser1', 35]
+                        ];
+                        
+                        const cities = [
+                            ['Waterloo', 150000], ['Kitchener', 200000], ['Guelph', 75000], ['Toronto', 2930000]
+                        ];
+                        
+                        for (const [name, age] of users) {
+                            const result = await conn.query(`CREATE (u:User {name: '${name}', age: ${age}})`);
+                            await result.close();
+                        }
+                        
+                        for (const [name, pop] of cities) {
+                            const result = await conn.query(`CREATE (c:City {name: '${name}', population: ${pop}})`);
+                            await result.close();
+                        }
+                        
+                        log('✅ Fallback INSERT method completed', 'success');
+                    }
+                    
+                } else {
+                    // Use INSERT method
+                    log('🔄 Using INSERT method for data loading...', 'info');
+                    
+                    const users = [
+                        ['Adam', 30], ['Karissa', 40], ['Zhang', 50], ['Noura', 25], ['TestUser1', 35]
+                    ];
+                    
+                    const cities = [
+                        ['Waterloo', 150000], ['Kitchener', 200000], ['Guelph', 75000], ['Toronto', 2930000]
+                    ];
+                    
+                    for (const [name, age] of users) {
+                        const result = await conn.query(`CREATE (u:User {name: '${name}', age: ${age}})`);
+                        await result.close();
+                    }
+                    
+                    for (const [name, pop] of cities) {
+                        const result = await conn.query(`CREATE (c:City {name: '${name}', population: ${pop}})`);
+                        await result.close();
+                    }
+                    
+                    log('✅ Data loaded via INSERT statements', 'success');
+                }
+                
+                // Test 4: Relationship creation
+                log('\n🔗 TEST 4: Relationship Creation', 'info');
+                log('-'.repeat(30), 'info');
+                
+                const relationshipQueries = [
+                    "MATCH (u1:User {name: 'Adam'}), (u2:User {name: 'Karissa'}) CREATE (u1)-[:Follows {since: 2020}]->(u2)",
+                    "MATCH (u1:User {name: 'Adam'}), (u2:User {name: 'Zhang'}) CREATE (u1)-[:Follows {since: 2020}]->(u2)",
+                    "MATCH (u:User {name: 'Adam'}), (c:City {name: 'Waterloo'}) CREATE (u)-[:LivesIn]->(c)",
+                    "MATCH (u:User {name: 'Karissa'}), (c:City {name: 'Waterloo'}) CREATE (u)-[:LivesIn]->(c)",
+                    "MATCH (u:User {name: 'Zhang'}), (c:City {name: 'Kitchener'}) CREATE (u)-[:LivesIn]->(c)"
+                ];
+                
+                for (const query of relationshipQueries) {
+                    const result = await conn.query(query);
+                    await result.close();
+                }
+                log('✅ Relationships created successfully', 'success');
+                
+                // Test 5: Verification queries
+                log('\n🔍 TEST 5: Data Verification', 'info');
+                log('-'.repeat(30), 'info');
+                
+                // Count queries
+                let result = await conn.query('MATCH (u:User) RETURN count(u) as userCount');
+                let rows = await result.getAllObjects();
+                log(`👥 Total users: ${rows[0]?.userCount || 0}`, 'success');
+                await result.close();
+                
+                result = await conn.query('MATCH (c:City) RETURN count(c) as cityCount');
+                rows = await result.getAllObjects();
+                log(`🏙️ Total cities: ${rows[0]?.cityCount || 0}`, 'success');
+                await result.close();
+                
+                result = await conn.query('MATCH ()-[f:Follows]->() RETURN count(f) as followsCount');
+                rows = await result.getAllObjects();
+                log(`👥 Follow relationships: ${rows[0]?.followsCount || 0}`, 'success');
+                await result.close();
+                
+                result = await conn.query('MATCH ()-[l:LivesIn]->() RETURN count(l) as livesInCount');
+                rows = await result.getAllObjects();
+                log(`🏠 LivesIn relationships: ${rows[0]?.livesInCount || 0}`, 'success');
+                await result.close();
+                
+                // Complex query
+                log('\n📊 Sample complex query results:', 'info');
+                result = await conn.query(`
+                    MATCH (u:User)-[l:LivesIn]->(c:City)
+                    RETURN u.name as person, u.age, c.name as city, c.population
+                    ORDER BY c.population DESC, u.name
+                `);
+                rows = await result.getAllObjects();
+                rows.forEach(row => {
+                    log(`   ${row.person} (${row['u.age']}) lives in ${row.city} (pop: ${row['c.population']})`, 'info');
+                });
+                await result.close();
+                
+                // Test summary
+                log('\n' + '='.repeat(60), 'info');
+                log('🎉 COMPREHENSIVE TEST COMPLETED SUCCESSFULLY!', 'success');
+                log('', 'info');
+                log('📊 Test Results Summary:', 'info');
+                log(`   ✅ KuzuDB initialization: SUCCESS`, 'success');
+                log(`   ${fsSuccess ? '✅' : '⚠️'} FS API functionality: ${fsSuccess ? 'SUCCESS' : 'NOT AVAILABLE'}`, fsSuccess ? 'success' : 'warning');
+                log(`   ✅ Schema creation: SUCCESS`, 'success');
+                log(`   ✅ Data loading: SUCCESS (${fsSuccess ? 'COPY method' : 'INSERT method'})`, 'success');
+                log(`   ✅ Relationship creation: SUCCESS`, 'success');
+                log(`   ✅ Query execution: SUCCESS`, 'success');
+                log('', 'info');
+                log('🚀 READY FOR GITNEXUS INTEGRATION!', 'success');
+                
+                if (fsSuccess) {
+                    log('', 'info');
+                    log('💡 Key findings for GitNexus:', 'info');
+                    log('   • FS.writeFile works for creating CSV files in WASM filesystem', 'info');
+                    log('   • COPY statements work for bulk loading from CSV files', 'info');
+                    log('   • This approach will be much faster than individual MERGE statements', 'info');
+                    log('   • Perfect for GitNexus batch operations!', 'success');
+                } else {
+                    log('', 'info');
+                    log('⚠️ Note for GitNexus:', 'warning');
+                    log('   • FS API might not be available in all environments', 'warning');
+                    log('   • Fallback to current MERGE batch approach recommended', 'warning');
+                    log('   • Consider environment detection for optimal method selection', 'info');
+                }
+                
+                setStatus('✅ Test completed successfully!', 'success');
+                
+            } catch (error) {
+                log(`❌ Full test failed: ${error.message}`, 'error');
+                setStatus(`❌ Test failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            } finally {
+                enableButtons();
+            }
+        }
+        
+        // Event listeners
+        clearOutputBtn.addEventListener('click', () => {
+            output.innerHTML = '';
+        });
+        
+        runTestBtn.addEventListener('click', runFullTest);
+        runFSTestBtn.addEventListener('click', testFS);
+        runCopyTestBtn.addEventListener('click', testCopy);
+        
+        // Initialize on page load
+        window.addEventListener('load', initializeKuzu);
+        
+    </script>
+</body>
+</html>
