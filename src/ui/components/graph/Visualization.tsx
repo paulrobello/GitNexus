@@ -383,8 +383,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
         })
         .strength(0.7)
       )
-      .alphaTarget(0.05)
-      .alphaDecay(0.005);
+      .alphaDecay(0.02); // Faster decay to stop simulation quicker - no alphaTarget means simulation stops naturally
 
     simulationRef.current = simulation;
 
@@ -420,28 +419,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     // Use D3 drag with proper click distance to prevent sticking
     node.call(d3.drag<SVGCircleElement, D3Node>()
       .clickDistance(10) // Larger threshold to better distinguish clicks from drags
-      .on('start', function(event) {
-        // Only fix position if this is actually a drag (not a click)
-        if (event.sourceEvent.type === 'mousedown') {
-          // Don't fix position immediately - wait for actual drag
-        }
+      .on('start', function(event, d) {
+        // Restart simulation when drag starts (needed if simulation has stopped)
+        if (!event.active) simulation.alphaTarget(0.3).restart();
       })
       .on('drag', function(event, d) {
-        // This only fires on actual drags (beyond clickDistance)
-        if (!d.fx && !d.fy) {
-          // First drag event - fix position and restart simulation
-          d.fx = d.x;
-          d.fy = d.y;
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-        }
+        // Fix node position during drag
         d.fx = event.x;
         d.fy = event.y;
       })
       .on('end', function(event, d) {
-        if (!event.active) simulation.alphaTarget(0.05);
-        // Release the node
-        d.fx = null;
-        d.fy = null;
+        // Stop simulation after drag ends
+        if (!event.active) simulation.alphaTarget(0);
+        // Keep the node at its dragged position (don't release fx/fy)
+        // This allows manual positioning while stopping continuous simulation
       })
     );
 
@@ -460,6 +451,15 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
       .attr('dy', '0.35em')
       .style('pointer-events', 'none')
       .style('text-shadow', '1px 1px 2px rgba(0,0,0,0.8)');
+
+    // Double-click to release a pinned node
+    node.on('dblclick', (event, d) => {
+      event.stopPropagation(); // Prevent zoom reset
+      d.fx = null;
+      d.fy = null;
+      simulation.alphaTarget(0.1).restart();
+      setTimeout(() => simulation.alphaTarget(0), 1000); // Stop after settling
+    });
 
     // Node click handler
     node.on('click', (event, d) => {
@@ -665,8 +665,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
         <div>🖱️ <strong>Navigation:</strong></div>
         <div>• Drag to pan</div>
         <div>• Scroll to zoom</div>
-        <div>• Double-click to reset view</div>
-        <div>• Drag nodes to reposition</div>
+        <div>• Double-click background to reset view</div>
+        <div>• Drag nodes to reposition (stays pinned)</div>
+        <div>• Double-click node to release from pinned position</div>
       </div>
 
       <style>{`

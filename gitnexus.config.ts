@@ -136,6 +136,7 @@ export interface GitNexusConfig {
  * Default GitNexus Configuration
  * 
  * These are the default values. Environment variables can override them.
+ * Uses import.meta.env for browser compatibility (Vite environment).
  */
 const config: GitNexusConfig = {
 
@@ -143,39 +144,39 @@ const config: GitNexusConfig = {
   // PROCESSING CONFIGURATION
   // ========================================
   processing: {
-    mode: (process.env.VITE_PARSING_MODE as 'parallel' | 'single') ?? 'parallel',
+    mode: (import.meta.env.VITE_PARSING_MODE as 'parallel' | 'single') ?? 'parallel',
     parallel: {
-      maxWorkers: parseInt(process.env.PARALLEL_MAX_WORKERS ?? '4'),
-      batchSize: parseInt(process.env.PARALLEL_BATCH_SIZE ?? '20'),
-      workerTimeoutMs: parseInt(process.env.PARALLEL_WORKER_TIMEOUT_MS ?? '60000')
+      maxWorkers: parseInt(import.meta.env.VITE_PARALLEL_MAX_WORKERS ?? '4'),
+      batchSize: parseInt(import.meta.env.VITE_PARALLEL_BATCH_SIZE ?? '20'),
+      workerTimeoutMs: parseInt(import.meta.env.VITE_PARALLEL_WORKER_TIMEOUT_MS ?? '60000')
     },
     memory: {
-      maxMB: parseInt(process.env.MEMORY_MAX_MB ?? '512'),
-      cleanupThresholdMB: parseInt(process.env.MEMORY_CLEANUP_THRESHOLD_MB ?? '400'),
-      gcIntervalMs: parseInt(process.env.MEMORY_GC_INTERVAL_MS ?? '30000'),
-      maxFileSizeMB: parseInt(process.env.MEMORY_MAX_FILE_SIZE_MB ?? '10'),
-      maxFilesInMemory: parseInt(process.env.MEMORY_MAX_FILES ?? '1000')
+      maxMB: parseInt(import.meta.env.VITE_MEMORY_MAX_MB ?? '512'),
+      cleanupThresholdMB: parseInt(import.meta.env.VITE_MEMORY_CLEANUP_THRESHOLD_MB ?? '400'),
+      gcIntervalMs: parseInt(import.meta.env.VITE_MEMORY_GC_INTERVAL_MS ?? '30000'),
+      maxFileSizeMB: parseInt(import.meta.env.VITE_MEMORY_MAX_FILE_SIZE_MB ?? '10'),
+      maxFilesInMemory: parseInt(import.meta.env.VITE_MEMORY_MAX_FILES ?? '1000')
     },
-    fileExtensions: process.env.PROCESSING_FILE_EXTENSIONS?.split(',') ?? [
+    fileExtensions: import.meta.env.VITE_PROCESSING_FILE_EXTENSIONS?.split(',') ?? [
       '.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.cpp', '.c', '.h', '.hpp',
       '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.scala', '.dart',
       '.json', '.yaml', '.yml', '.xml', '.toml', '.ini', '.cfg', '.properties'
     ],
-    performanceMonitoring: process.env.PROCESSING_PERFORMANCE_MONITORING !== 'false'
+    performanceMonitoring: import.meta.env.VITE_PROCESSING_PERFORMANCE_MONITORING !== 'false'
   },
 
   // ========================================
   // KUZU DB CONFIGURATION
   // ========================================
   kuzu: {
-    enabled: process.env.VITE_KUZU_ENABLED === 'true',
-    persistence: process.env.KUZU_PERSISTENCE !== 'false',
-    dualWrite: process.env.KUZU_DUAL_WRITE !== 'false',
-    fallbackToJson: process.env.KUZU_FALLBACK_JSON !== 'false',
+    enabled: import.meta.env.VITE_KUZU_ENABLED === 'true',
+    persistence: import.meta.env.VITE_KUZU_PERSISTENCE !== 'false',
+    dualWrite: import.meta.env.VITE_KUZU_DUAL_WRITE !== 'false',
+    fallbackToJson: import.meta.env.VITE_KUZU_FALLBACK_JSON !== 'false',
     performance: {
-      enableCache: process.env.KUZU_ENABLE_CACHE !== 'false',
-      cacheSize: parseInt(process.env.KUZU_CACHE_SIZE ?? '1000'),
-      queryTimeout: parseInt(process.env.KUZU_QUERY_TIMEOUT ?? '30000')
+      enableCache: import.meta.env.VITE_KUZU_ENABLE_CACHE !== 'false',
+      cacheSize: parseInt(import.meta.env.VITE_KUZU_CACHE_SIZE ?? '1000'),
+      queryTimeout: parseInt(import.meta.env.VITE_KUZU_QUERY_TIMEOUT ?? '30000')
     }
   },
 
@@ -184,40 +185,40 @@ const config: GitNexusConfig = {
   // ========================================
   ai: {
     cypher: {
-      defaultLimit: parseInt(process.env.AI_CYPHER_DEFAULT_LIMIT ?? '20'),
-      maxLimit: parseInt(process.env.AI_CYPHER_MAX_LIMIT ?? '100'),
-      timeoutMs: parseInt(process.env.AI_CYPHER_TIMEOUT_MS ?? '30000'),
-      enableValidation: process.env.AI_CYPHER_ENABLE_VALIDATION !== 'false',
-      enableLimiting: process.env.AI_CYPHER_ENABLE_LIMITING !== 'false',
-      enableTruncation: process.env.AI_CYPHER_ENABLE_TRUNCATION !== 'false'
+      defaultLimit: parseInt(import.meta.env.VITE_AI_CYPHER_DEFAULT_LIMIT ?? '20'),
+      maxLimit: parseInt(import.meta.env.VITE_AI_CYPHER_MAX_LIMIT ?? '100'),
+      timeoutMs: parseInt(import.meta.env.VITE_AI_CYPHER_TIMEOUT_MS ?? '30000'),
+      enableValidation: import.meta.env.VITE_AI_CYPHER_ENABLE_VALIDATION !== 'false',
+      enableLimiting: import.meta.env.VITE_AI_CYPHER_ENABLE_LIMITING !== 'false',
+      enableTruncation: import.meta.env.VITE_AI_CYPHER_ENABLE_TRUNCATION !== 'false'
     },
     llm: {
-      defaultProvider: (process.env.LLM_DEFAULT_PROVIDER as 'openai' | 'azure' | 'anthropic' | 'gemini') ?? 'openai',
+      defaultProvider: (import.meta.env.VITE_LLM_DEFAULT_PROVIDER as 'openai' | 'azure' | 'anthropic' | 'gemini') ?? 'openai',
       providers: {
-        openai: process.env.OPENAI_API_KEY ? {
-          apiKey: process.env.OPENAI_API_KEY,
-          model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-          maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS ?? '4000'),
-          temperature: parseFloat(process.env.OPENAI_TEMPERATURE ?? '0.1')
+        openai: import.meta.env.VITE_OPENAI_API_KEY ? {
+          apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+          model: import.meta.env.VITE_OPENAI_MODEL ?? 'gpt-4o-mini',
+          maxTokens: parseInt(import.meta.env.VITE_OPENAI_MAX_TOKENS ?? '4000'),
+          temperature: parseFloat(import.meta.env.VITE_OPENAI_TEMPERATURE ?? '0.1')
         } : undefined,
-        azure: process.env.AZURE_API_KEY ? {
-          apiKey: process.env.AZURE_API_KEY,
-          endpoint: process.env.AZURE_ENDPOINT,
-          deployment: process.env.AZURE_DEPLOYMENT,
-          maxTokens: parseInt(process.env.AZURE_MAX_TOKENS ?? '4000'),
-          temperature: parseFloat(process.env.AZURE_TEMPERATURE ?? '0.1')
+        azure: import.meta.env.VITE_AZURE_API_KEY ? {
+          apiKey: import.meta.env.VITE_AZURE_API_KEY,
+          endpoint: import.meta.env.VITE_AZURE_ENDPOINT,
+          deployment: import.meta.env.VITE_AZURE_DEPLOYMENT,
+          maxTokens: parseInt(import.meta.env.VITE_AZURE_MAX_TOKENS ?? '4000'),
+          temperature: parseFloat(import.meta.env.VITE_AZURE_TEMPERATURE ?? '0.1')
         } : undefined,
-        anthropic: process.env.ANTHROPIC_API_KEY ? {
-          apiKey: process.env.ANTHROPIC_API_KEY,
-          model: process.env.ANTHROPIC_MODEL ?? 'claude-3-sonnet-20240229',
-          maxTokens: parseInt(process.env.ANTHROPIC_MAX_TOKENS ?? '4000'),
-          temperature: parseFloat(process.env.ANTHROPIC_TEMPERATURE ?? '0.1')
+        anthropic: import.meta.env.VITE_ANTHROPIC_API_KEY ? {
+          apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
+          model: import.meta.env.VITE_ANTHROPIC_MODEL ?? 'claude-3-sonnet-20240229',
+          maxTokens: parseInt(import.meta.env.VITE_ANTHROPIC_MAX_TOKENS ?? '4000'),
+          temperature: parseFloat(import.meta.env.VITE_ANTHROPIC_TEMPERATURE ?? '0.1')
         } : undefined,
-        gemini: process.env.GEMINI_API_KEY ? {
-          apiKey: process.env.GEMINI_API_KEY,
-          model: process.env.GEMINI_MODEL ?? 'gemini-pro',
-          maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS ?? '4000'),
-          temperature: parseFloat(process.env.GEMINI_TEMPERATURE ?? '0.1')
+        gemini: import.meta.env.VITE_GEMINI_API_KEY ? {
+          apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+          model: import.meta.env.VITE_GEMINI_MODEL ?? 'gemini-pro',
+          maxTokens: parseInt(import.meta.env.VITE_GEMINI_MAX_TOKENS ?? '4000'),
+          temperature: parseFloat(import.meta.env.VITE_GEMINI_TEMPERATURE ?? '0.1')
         } : undefined
       }
     }
@@ -227,8 +228,8 @@ const config: GitNexusConfig = {
   // IGNORE PATTERNS (CENTRALIZED!)
   // ========================================
   ignore: {
-    enabled: process.env.IGNORE_ENABLED !== 'false',
-    patterns: process.env.IGNORE_PATTERNS?.split(',') ?? [
+    enabled: import.meta.env.VITE_IGNORE_ENABLED !== 'false',
+    patterns: import.meta.env.VITE_IGNORE_PATTERNS?.split(',') ?? [
       // Version Control
       '.git', '.svn', '.hg',
       // Package Managers & Dependencies
@@ -253,8 +254,8 @@ const config: GitNexusConfig = {
       // Cache Directories
       '.cache', '.parcel-cache', '.next', '.nuxt'
     ],
-    suffixes: process.env.IGNORE_SUFFIXES?.split(',') ?? ['.tmp', '~', '.bak', '.swp', '.swo'],
-    fileExtensions: process.env.IGNORE_FILE_EXTENSIONS?.split(',') ?? [
+    suffixes: import.meta.env.VITE_IGNORE_SUFFIXES?.split(',') ?? ['.tmp', '~', '.bak', '.swp', '.swo'],
+    fileExtensions: import.meta.env.VITE_IGNORE_FILE_EXTENSIONS?.split(',') ?? [
       // Compiled/Binary
       '.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.jar', '.war', '.ear',
       // Archives
@@ -268,40 +269,40 @@ const config: GitNexusConfig = {
       // Minified/Generated
       '.min.js', '.min.css', '.map'
     ],
-    customPatterns: process.env.IGNORE_CUSTOM_PATTERNS?.split(',') ?? []
+    customPatterns: import.meta.env.VITE_IGNORE_CUSTOM_PATTERNS?.split(',') ?? []
   },
 
   // ========================================
   // LOGGING & DEBUGGING
   // ========================================
   logging: {
-    level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') ?? 'info',
-    enableMetrics: process.env.LOG_ENABLE_METRICS !== 'false',
-    enablePerformance: process.env.LOG_ENABLE_PERFORMANCE !== 'false',
-    maxEntries: parseInt(process.env.LOG_MAX_ENTRIES ?? '1000'),
-    monitoringIntervalMs: parseInt(process.env.LOG_MONITORING_INTERVAL_MS ?? '30000')
+    level: (import.meta.env.VITE_LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') ?? 'info',
+    enableMetrics: import.meta.env.VITE_LOG_ENABLE_METRICS !== 'false',
+    enablePerformance: import.meta.env.VITE_LOG_ENABLE_PERFORMANCE !== 'false',
+    maxEntries: parseInt(import.meta.env.VITE_LOG_MAX_ENTRIES ?? '1000'),
+    monitoringIntervalMs: parseInt(import.meta.env.VITE_LOG_MONITORING_INTERVAL_MS ?? '30000')
   },
 
   // ========================================
   // GITHUB INTEGRATION
   // ========================================
   github: {
-    token: process.env.GITHUB_TOKEN,
-    apiUrl: process.env.GITHUB_API_URL ?? 'https://api.github.com',
+    token: import.meta.env.VITE_GITHUB_TOKEN,
+    apiUrl: import.meta.env.VITE_GITHUB_API_URL ?? 'https://api.github.com',
     rateLimit: {
-      maxRequests: parseInt(process.env.GITHUB_RATE_LIMIT_MAX ?? '60'),
-      windowMs: parseInt(process.env.GITHUB_RATE_LIMIT_WINDOW_MS ?? '60000')
+      maxRequests: parseInt(import.meta.env.VITE_GITHUB_RATE_LIMIT_MAX ?? '60'),
+      windowMs: parseInt(import.meta.env.VITE_GITHUB_RATE_LIMIT_WINDOW_MS ?? '60000')
     },
     retry: {
-      maxRetries: parseInt(process.env.GITHUB_RETRY_MAX ?? '3'),
-      backoffMs: parseInt(process.env.GITHUB_RETRY_BACKOFF_MS ?? '1000')
+      maxRetries: parseInt(import.meta.env.VITE_GITHUB_RETRY_MAX ?? '3'),
+      backoffMs: parseInt(import.meta.env.VITE_GITHUB_RETRY_BACKOFF_MS ?? '1000')
     }
   },
 
   // ========================================
   // ENVIRONMENT & DEPLOYMENT
   // ========================================
-  environment: (process.env.NODE_ENV as 'development' | 'staging' | 'production') ?? 'development'
+  environment: (import.meta.env.MODE as 'development' | 'staging' | 'production') ?? 'development'
 };
 
 export default config;
