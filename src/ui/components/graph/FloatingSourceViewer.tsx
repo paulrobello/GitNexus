@@ -230,10 +230,14 @@ const FloatingSourceViewer: React.FC<FloatingSourceViewerProps> = ({
 
   // Get source information for the selected node
   const sourceInfo = useMemo((): SourceInfo | null => {
-    if (!nodeId || !graph) return null;
+    if (!nodeId || !graph) {
+      return null;
+    }
 
     const node = graph.nodes.find(n => n.id === nodeId);
-    if (!node) return null;
+    if (!node) {
+      return null;
+    }
 
     const nodeName = (node.properties.name || node.properties.functionName || node.properties.className || '') as string;
     const nodeType = node.label;
@@ -543,8 +547,96 @@ This node represents a ${nodeType.toLowerCase()} in the knowledge graph.
       }
     }
     
-    // If no content found, return null to trigger the mock content generation above
-    return null;
+    // If no content found, generate mock content for any node type
+    const isStructuralNode = ['Project', 'Folder'].includes(nodeType);
+    const isDefinitionNode = ['Function', 'Class', 'Method', 'Variable', 'Interface', 'Type'].includes(nodeType);
+    
+    let mockContent = '';
+    
+    if (isStructuralNode) {
+      mockContent = `# ${nodeType}: ${nodeName}
+
+This is a structural node in the knowledge graph representing ${nodeType.toLowerCase()} organization.
+
+## Information:
+- **Type**: ${nodeType}
+- **Name**: ${nodeName}
+- **Status**: Structural element (no source code content)
+
+## Why no content?
+Structural nodes like projects, folders, and some files represent organizational elements rather than code definitions. They help organize the knowledge graph but don't contain executable code.
+
+## To view code content:
+1. Look for definition nodes (Function, Class, Method) within this ${nodeType.toLowerCase()}
+2. Check if this ${nodeType.toLowerCase()} contains any parsed source files
+3. Verify that the ingestion pipeline successfully processed files in this location`;
+    } else if (isDefinitionNode) {
+      mockContent = `# ${nodeType}: ${nodeName}
+
+⚠️ **Content Not Available**
+
+This ${nodeType.toLowerCase()} definition was found in the knowledge graph but the source content is not accessible.
+
+## Possible Reasons:
+
+### 1. External Library
+This may be a function/class from an external library or framework that wasn't included in the project analysis.
+
+### 2. Parsing Issues
+The source file might have:
+- Syntax errors that prevented parsing
+- Unsupported language features
+- Complex code patterns not captured by Tree-sitter queries
+
+### 3. File Access Issues
+The original source file might be:
+- Missing from the uploaded content
+- Filtered out during ingestion
+- Located in an ignored directory
+
+### 4. Incomplete Ingestion
+The ingestion pipeline might have:
+- Skipped this file due to size limits
+- Failed to process this specific definition
+- Encountered errors during Tree-sitter parsing
+
+## Debugging Tips:
+1. Check the browser console for parsing errors
+2. Verify the file was included in the upload
+3. Look for related files that might contain this definition
+4. Try re-running the ingestion process
+
+## Mock Implementation:
+\`\`\`${nodeType === 'Function' ? 'javascript' : nodeType === 'Class' ? 'typescript' : 'text'}
+${nodeType === 'Function' ? `function ${nodeName}() {
+  // Implementation not available
+  // This may be an external library function
+  // or incomplete parsing result
+}` : nodeType === 'Class' ? `class ${nodeName} {
+  // Class definition not available
+  // This may be an external library class
+  // or incomplete parsing result
+}` : `// ${nodeType} definition for ${nodeName}
+// Content not available in current context`}
+\`\`\``;
+    } else {
+      mockContent = `# ${nodeType}: ${nodeName}
+
+This node represents a ${nodeType.toLowerCase()} in the knowledge graph.
+
+**Status**: Content not available
+
+**Note**: This may be a specialized node type or an element that doesn't have direct source code representation.`;
+    }
+
+    return {
+      fileName: `${nodeName} (${nodeType})`,
+      filePath: 'virtual-node',
+      content: mockContent,
+      nodeType,
+      nodeName,
+      language: 'markdown'
+    };
   }, [nodeId, graph, fileContents]);
 
   // Dragging functionality
@@ -601,7 +693,9 @@ This node represents a ${nodeType.toLowerCase()} in the knowledge graph.
     }
   }, [isPinned, onClose]);
 
-  if (!isOpen || !sourceInfo) return null;
+  if (!isOpen || !sourceInfo) {
+    return null;
+  }
 
   return (
     <>

@@ -20,6 +20,8 @@ export default function GraphExplorer({ graph, isLoading, onNodeSelect, fileCont
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleNodeSelect = (nodeId: string | null, event?: MouseEvent) => {
+    console.log('🔍 GraphExplorer: Node selected', { nodeId });
+    
     setSelectedNode(nodeId);
     onNodeSelect?.(nodeId);
     
@@ -36,6 +38,9 @@ export default function GraphExplorer({ graph, isLoading, onNodeSelect, fileCont
         
         setFloatingViewerPosition({ x: adjustedX, y: adjustedY });
         setFloatingViewerOpen(true);
+        console.log('✅ GraphExplorer: Opening floating viewer');
+      } else {
+        console.warn('⚠️ GraphExplorer: No container rect found');
       }
     } else if (!nodeId) {
       // Close floating viewer when deselecting (unless pinned)

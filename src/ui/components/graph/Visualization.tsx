@@ -416,22 +416,60 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
       .attr('stroke-width', 2)
       .style('cursor', 'pointer');
 
+    // Track drag state to distinguish clicks from drags
+    const DRAG_THRESHOLD = 5; // pixels
+    
+    // Add drag state to each node
+    nodes.forEach(node => {
+      (node as any).dragStartPos = null;
+      (node as any).isDragging = false;
+    });
+
     // Use D3 drag with proper click distance to prevent sticking
     node.call(d3.drag<SVGCircleElement, D3Node>()
-      .clickDistance(10) // Larger threshold to better distinguish clicks from drags
+      .clickDistance(DRAG_THRESHOLD) // Threshold to distinguish clicks from drags
       .on('start', function(event, d) {
+        (d as any).dragStartPos = { x: event.x, y: event.y };
+        (d as any).isDragging = false;
+        
         // Restart simulation when drag starts (needed if simulation has stopped)
         if (!event.active) simulation.alphaTarget(0.3).restart();
       })
       .on('drag', function(event, d) {
+        // Calculate distance from start position
+        const dragStartPos = (d as any).dragStartPos;
+        if (dragStartPos) {
+          const distance = Math.sqrt(
+            Math.pow(event.x - dragStartPos.x, 2) + 
+            Math.pow(event.y - dragStartPos.y, 2)
+          );
+          
+          if (distance > DRAG_THRESHOLD) {
+            (d as any).isDragging = true;
+          }
+        }
+        
         // Fix node position during drag
         d.fx = event.x;
         d.fy = event.y;
       })
       .on('end', function(event, d) {
+        const isDragging = (d as any).isDragging;
+        
         // Stop simulation after drag ends
         if (!event.active) simulation.alphaTarget(0);
-        // Keep the node at its dragged position (don't release fx/fy)
+        
+        // If this was just a click (not a real drag), release the fixed position
+        if (!isDragging) {
+          d.fx = null;
+          d.fy = null;
+        }
+        
+        // Reset drag tracking
+        (d as any).dragStartPos = null;
+        (d as any).isDragging = false;
+        
+        // Keep the node at its dragged position if it was actually dragged
         // This allows manual positioning while stopping continuous simulation
       })
     );
@@ -463,9 +501,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 
     // Node click handler
     node.on('click', (event, d) => {
+      const isDragging = (d as any).isDragging;
       
-      // Ignore clicks if we're dragging or just finished dragging
-      if (d.fx || d.fy) return; // Check if node is being dragged
+      // Only ignore clicks if we were actually dragging (not just if fx/fy are set)
+      if (isDragging) {
+        return;
+      }
       
       event.stopPropagation();
       

@@ -29,43 +29,43 @@ export class CypherGenerator {
   private graphSchema: string = '';
   private outputParser: StructuredOutputParser<typeof CypherQuerySchema>;
   
-  // Common Cypher patterns and examples
+  // Common Cypher patterns and examples (Updated for Polymorphic Schema)
   private static readonly CYPHER_EXAMPLES = [
     {
       question: "What functions are in the main.py file?",
-      cypher: "MATCH (f:File {name: 'main.py'})-[:CONTAINS]->(func:Function) RETURN func.name, func.startLine"
+      cypher: "MATCH (f:CodeElement {elementType: 'File', name: 'main.py'})-[r:CodeRelationship {relationshipType: 'CONTAINS'}]->(func:CodeElement {elementType: 'Function'}) RETURN func.name, func.startLine"
     },
     {
       question: "Which functions call the authenticate function?",
-      cypher: "MATCH (caller)-[:CALLS]->(target:Function {name: 'authenticate'}) RETURN caller.name, caller.filePath"
+      cypher: "MATCH (caller:CodeElement)-[r:CodeRelationship {relationshipType: 'CALLS'}]->(target:CodeElement {elementType: 'Function', name: 'authenticate'}) RETURN caller.name, caller.filePath"
     },
     {
       question: "Show me all classes in the project",
-      cypher: "MATCH (c:Class) RETURN c.name, c.filePath"
+      cypher: "MATCH (c:CodeElement {elementType: 'Class'}) RETURN c.name, c.filePath"
     },
     {
       question: "What classes inherit from BaseService?",
-      cypher: "MATCH (child:Class)-[:INHERITS]->(parent:Class {name: 'BaseService'}) RETURN child.name, child.filePath"
+      cypher: "MATCH (child:CodeElement {elementType: 'Class'})-[r:CodeRelationship {relationshipType: 'INHERITS'}]->(parent:CodeElement {elementType: 'Class', name: 'BaseService'}) RETURN child.name, child.filePath"
     },
     {
       question: "Find all methods in the UserService class",
-      cypher: "MATCH (c:Class {name: 'UserService'})-[:CONTAINS]->(m:Method) RETURN m.name, m.startLine"
+      cypher: "MATCH (c:CodeElement {elementType: 'Class', name: 'UserService'})-[r:CodeRelationship {relationshipType: 'CONTAINS'}]->(m:CodeElement {elementType: 'Method'}) RETURN m.name, m.startLine"
     },
     {
       question: "Which methods override the save method?",
-      cypher: "MATCH (child:Method)-[:OVERRIDES]->(parent:Method {name: 'save'}) RETURN child.name, child.parentClass"
+      cypher: "MATCH (child:CodeElement {elementType: 'Method'})-[r:CodeRelationship {relationshipType: 'OVERRIDES'}]->(parent:CodeElement {elementType: 'Method', name: 'save'}) RETURN child.name, child.parentClass"
     },
     {
       question: "Show all interfaces and the classes that implement them",
-      cypher: "MATCH (c:Class)-[:IMPLEMENTS]->(i:Interface) RETURN i.name, c.name"
+      cypher: "MATCH (c:CodeElement {elementType: 'Class'})-[r:CodeRelationship {relationshipType: 'IMPLEMENTS'}]->(i:CodeElement {elementType: 'Interface'}) RETURN i.name, c.name"
     },
     {
       question: "Find functions decorated with @app.route",
-      cypher: "MATCH (d:Decorator {name: 'app.route'})-[:DECORATES]->(f:Function) RETURN f.name, f.filePath"
+      cypher: "MATCH (d:CodeElement {elementType: 'Decorator', name: 'app.route'})-[r:CodeRelationship {relationshipType: 'DECORATES'}]->(f:CodeElement {elementType: 'Function'}) RETURN f.name, f.filePath"
     },
     {
       question: "What files import the requests module?",
-      cypher: "MATCH (f:File)-[:IMPORTS]->(target) WHERE target.name CONTAINS 'requests' RETURN f.name"
+      cypher: "MATCH (f:CodeElement {elementType: 'File'})-[r:CodeRelationship {relationshipType: 'IMPORTS'}]->(target:CodeElement) WHERE target.name CONTAINS 'requests' RETURN f.name"
     },
     {
       question: "Show the call chain from main to database functions",
@@ -222,27 +222,29 @@ export class CypherGenerator {
   ): string {
     let prompt = `You are a Cypher query expert for a code knowledge graph using KuzuDB (a high-performance graph database). Your task is to convert natural language questions into valid Cypher queries optimized for KuzuDB.
 
+IMPORTANT: This codebase uses a POLYMORPHIC SCHEMA for optimal performance:
+
+POLYMORPHIC SCHEMA:
+- All nodes are stored in a single CodeElement table with an 'elementType' discriminator
+- All relationships are stored in a single CodeRelationship table with a 'relationshipType' discriminator
+
 GRAPH SCHEMA:
 ${this.graphSchema}
 
-NODE TYPES:
-- Project: Root project node
-- Folder: Directory containers  
-- File: Source code files
-- Module: Python modules (.py files)
-- Class: Class definitions
-- Function: Function definitions
-- Method: Class method definitions
-- Variable: Variable declarations
+NODE STRUCTURE:
+- Single node type: CodeElement
+- Discriminator property: elementType
+- Element types: 'Project', 'Folder', 'File', 'Module', 'Class', 'Function', 'Method', 'Variable', 'Interface', 'Type', 'Import'
 
-RELATIONSHIP TYPES:
-- CONTAINS: Hierarchical containment (Project->Folder, Folder->File, File->Function, etc.)
-- CALLS: Function/method calls between code entities
-- INHERITS: Class inheritance relationships
-- IMPORTS: Module import relationships
-- OVERRIDES: Method override relationships
-- IMPLEMENTS: Interface implementation
-- DECORATES: Decorator relationships
+RELATIONSHIP STRUCTURE:
+- Single relationship type: CodeRelationship  
+- Discriminator property: relationshipType
+- Relationship types: 'CONTAINS', 'CALLS', 'INHERITS', 'IMPORTS', 'OVERRIDES', 'IMPLEMENTS', 'DECORATES', 'DEFINES', 'USES', 'ACCESSES', 'EXTENDS'
+
+CRITICAL QUERY PATTERNS:
+- Nodes: MATCH (n:CodeElement {elementType: 'Function'}) 
+- Relationships: MATCH ()-[r:CodeRelationship {relationshipType: 'CALLS'}]->()
+- Combined: MATCH (f:CodeElement {elementType: 'File'})-[r:CodeRelationship {relationshipType: 'CONTAINS'}]->(func:CodeElement {elementType: 'Function'})
 
 KUZUDB OPTIMIZATION GUIDELINES:
 
@@ -251,44 +253,44 @@ KUZUDB OPTIMIZATION GUIDELINES:
    - Leverage WHERE clauses for efficient filtering
    - Use aggregation functions (COUNT, COLLECT) for statistics
 
-2. QUERY PATTERNS SUPPORTED:
+2. POLYMORPHIC QUERY PATTERNS:
 
-   SIMPLE MATCH: Find nodes by label and properties
-   MATCH (f:Function {name: 'main'}) RETURN f
+   SIMPLE MATCH: Find nodes by elementType and properties
+   MATCH (f:CodeElement {elementType: 'Function', name: 'main'}) RETURN f
 
-   RELATIONSHIP TRAVERSAL: Follow relationships between nodes
-   MATCH (caller)-[:CALLS]->(target:Function) RETURN caller.name, target.name
+   RELATIONSHIP TRAVERSAL: Follow relationships using relationshipType
+   MATCH (caller:CodeElement)-[r:CodeRelationship {relationshipType: 'CALLS'}]->(target:CodeElement {elementType: 'Function'}) RETURN caller.name, target.name
 
    VARIABLE-LENGTH PATHS: Find chains of relationships
-   MATCH (start:Function)-[:CALLS*1..3]->(end:Function) RETURN start.name, end.name
+   MATCH (start:CodeElement {elementType: 'Function'})-[r:CodeRelationship {relationshipType: 'CALLS'}*1..3]->(end:CodeElement {elementType: 'Function'}) RETURN start.name, end.name
 
    AGGREGATION: Count and collect results
-   MATCH (f:File)-[:CONTAINS]->(func:Function) RETURN f.name, COUNT(func)
+   MATCH (f:CodeElement {elementType: 'File'})-[r:CodeRelationship {relationshipType: 'CONTAINS'}]->(func:CodeElement {elementType: 'Function'}) RETURN f.name, COUNT(func)
 
    PATTERN MATCHING: Use WHERE clauses for filtering
-   MATCH (f:Function) WHERE f.name CONTAINS 'user' RETURN f.name, f.filePath
+   MATCH (f:CodeElement {elementType: 'Function'}) WHERE f.name CONTAINS 'user' RETURN f.name, f.filePath
 
-3. COMMON PATTERNS:
+3. POLYMORPHIC COMMON PATTERNS:
 
    FIND FUNCTIONS IN FILE:
-   MATCH (f:File {name: 'filename.py'})-[:CONTAINS]->(func:Function) RETURN func.name
+   MATCH (f:CodeElement {elementType: 'File', name: 'filename.py'})-[r:CodeRelationship {relationshipType: 'CONTAINS'}]->(func:CodeElement {elementType: 'Function'}) RETURN func.name
 
    FIND CALLERS OF FUNCTION:
-   MATCH (caller)-[:CALLS]->(target:Function {name: 'functionName'}) RETURN caller.name
+   MATCH (caller:CodeElement)-[r:CodeRelationship {relationshipType: 'CALLS'}]->(target:CodeElement {elementType: 'Function', name: 'functionName'}) RETURN caller.name
 
    FIND INHERITANCE CHAIN:
-   MATCH (child:Class)-[:INHERITS*1..5]->(parent:Class) RETURN child.name, parent.name
+   MATCH (child:CodeElement {elementType: 'Class'})-[r:CodeRelationship {relationshipType: 'INHERITS'}*1..5]->(parent:CodeElement {elementType: 'Class'}) RETURN child.name, parent.name
 
    FIND IMPORTS:
-   MATCH (f:File)-[:IMPORTS]->(module) WHERE module.name CONTAINS 'requests' RETURN f.name
+   MATCH (f:CodeElement {elementType: 'File'})-[r:CodeRelationship {relationshipType: 'IMPORTS'}]->(module:CodeElement) WHERE module.name CONTAINS 'requests' RETURN f.name
 
    COUNT ENTITIES:
-   MATCH (f:Function) RETURN COUNT(f) as functionCount
+   MATCH (f:CodeElement {elementType: 'Function'}) RETURN COUNT(f) as functionCount
 
    COMPLEX DEPENDENCY ANALYSIS:
-   MATCH (start:Function)-[:CALLS*1..5]->(target:Function) 
+   MATCH (start:CodeElement {elementType: 'Function'})-[r:CodeRelationship {relationshipType: 'CALLS'}*1..5]->(target:CodeElement {elementType: 'Function'}) 
    WHERE start.name = 'main' AND target.name CONTAINS 'db'
-   RETURN start.name, target.name, LENGTH(shortestPath((start)-[:CALLS*]->(target))) as depth`;
+   RETURN start.name, target.name, LENGTH(shortestPath((start)-[r2:CodeRelationship {relationshipType: 'CALLS'}*]->(target))) as depth`;
 
     if (includeExamples) {
       prompt += `\n\nEXAMPLE QUERIES:\n`;

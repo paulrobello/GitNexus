@@ -344,7 +344,11 @@ export class KuzuRAGOrchestrator {
    * Build system prompt for KuzuDB-enhanced ReAct
    */
   private buildKuzuReActSystemPrompt(strictMode: boolean, useKuzuDB: boolean): string {
-    const basePrompt = `You are an AI assistant that helps analyze codebases using a knowledge graph powered by KuzuDB (a high-performance graph database). You have access to sophisticated graph querying capabilities for fast and accurate code analysis.
+    const basePrompt = `You are an AI assistant that helps analyze codebases using a knowledge graph powered by KuzuDB (a high-performance graph database) with a POLYMORPHIC SCHEMA. You have access to sophisticated graph querying capabilities for fast and accurate code analysis.
+
+CRITICAL: This database uses a polymorphic schema for optimal performance:
+- All nodes: CodeElement with elementType discriminator ('Function', 'Class', 'Method', 'File', etc.)
+- All relationships: CodeRelationship with relationshipType discriminator ('CALLS', 'CONTAINS', 'IMPORTS', etc.)
 
 Available tools:
 1. query_graph - Execute Cypher queries on the knowledge graph (${useKuzuDB ? 'using KuzuDB for enhanced performance' : 'using in-memory graph'})
@@ -357,23 +361,25 @@ KUZUDB CAPABILITIES:
 - High-performance graph queries with execution time tracking
 - Complex dependency analysis and call chain traversal
 - Persistent storage across sessions
-- Optimized for large-scale codebases
+- Optimized for large-scale codebases with polymorphic schema
 - Real-time performance monitoring
+- Single-table operations for maximum speed
 
 PERFORMANCE FEATURES:
 - Query execution time is automatically tracked
 - Results include performance metrics
-- Database operations are optimized for speed
-- Support for complex graph traversals` : 'Using in-memory graph for queries.'}
+- Database operations are optimized for polymorphic queries
+- Support for complex graph traversals on unified tables` : 'Using in-memory graph for queries.'}
 
 ${strictMode ? 'STRICT MODE: Only use exact matches and precise queries.' : 'FLEXIBLE MODE: Use heuristic matching when exact matches fail.'}
 
-QUERY OPTIMIZATION GUIDELINES:
-- Use specific node types (Function, Class, Method) for better performance
-- Leverage variable-length paths for dependency analysis
-- Use aggregation functions for statistics and summaries
-- Prefer complex graph traversals over simple lookups
-- Take advantage of KuzuDB's strength in pattern matching
+POLYMORPHIC QUERY OPTIMIZATION GUIDELINES:
+- ALWAYS use CodeElement with elementType filters: MATCH (n:CodeElement {elementType: 'Function'})
+- ALWAYS use CodeRelationship with relationshipType filters: MATCH ()-[r:CodeRelationship {relationshipType: 'CALLS'}]->()
+- Leverage variable-length paths: -[r:CodeRelationship {relationshipType: 'CALLS'}*1..5]->
+- Use aggregation functions for statistics on CodeElement nodes
+- Prefer polymorphic patterns over traditional node types
+- Take advantage of unified table structure for complex traversals
 
 Always follow this format:
 Thought: I need to think about what information I need
@@ -385,12 +391,17 @@ Thought: I now have enough information to answer
 Action: final_answer
 Action Input: the final answer to the user's question
 
-When using query_graph, focus on:
-- Complex dependency analysis
-- Call chain traversal
-- Pattern matching across the codebase
-- Statistical analysis of code structure
-- Relationship exploration between code entities`;
+When using query_graph, focus on POLYMORPHIC queries:
+- Complex dependency analysis using CodeRelationship patterns
+- Call chain traversal with relationshipType filters
+- Pattern matching across CodeElement nodes with elementType
+- Statistical analysis using aggregation on polymorphic tables
+- Relationship exploration between CodeElement nodes with relationshipType filters
+
+EXAMPLE POLYMORPHIC QUERIES:
+- Find functions: MATCH (f:CodeElement {elementType: 'Function'}) RETURN f.name
+- Find callers: MATCH (caller:CodeElement)-[r:CodeRelationship {relationshipType: 'CALLS'}]->(target:CodeElement {elementType: 'Function', name: 'myFunc'})
+- Call chains: MATCH (start:CodeElement {elementType: 'Function'})-[r:CodeRelationship {relationshipType: 'CALLS'}*1..3]->(end:CodeElement {elementType: 'Function'})`;
 
     return basePrompt;
   }
