@@ -94,10 +94,12 @@ export interface ParallelParsingResult {
 			}
 
 			// Create worker pool using configuration
+			console.log('🔧 ParallelParsingProcessor: About to create worker pool...');
 			this.workerPool = await WebWorkerPoolUtils.createWorkerPool({
 				workerScript: '/workers/tree-sitter-worker.js',
 				name: 'ParallelParsingPool'
 			});
+			console.log('🔧 ParallelParsingProcessor: Worker pool created successfully');
 
 			// Set up worker pool event listeners
 			this.workerPool.on('workerCreated', (data: unknown) => {

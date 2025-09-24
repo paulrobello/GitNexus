@@ -93,6 +93,11 @@ export interface KuzuInstance {
    * Get the current database path
    */
   getDatabasePath(): string;
+
+  /**
+   * Get access to KuzuDB filesystem API for COPY operations
+   */
+  getFS(): any;
 }
 
 /**
@@ -376,6 +381,12 @@ class KuzuInstanceImpl implements KuzuInstance {
 
   getDatabasePath(): string {
     return this.databasePath;
+  }
+
+  getFS(): any {
+    // Note: This is a placeholder for the WASM loader fallback
+    // The actual FS API is available through kuzu-npm-integration
+    throw new Error('FS API not available in WASM loader fallback. Use kuzu-npm-integration instead.');
   }
 
   /**

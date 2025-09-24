@@ -149,6 +149,7 @@ export interface GitNexusConfig {
     // Performance Features
     enableWebWorkers: boolean;
     enableBatchProcessing: boolean;
+    enableKuzuCopy: boolean;
     enableCaching: boolean;
     enableWorkerPool: boolean;
     enableParallelParsing: boolean;
@@ -339,6 +340,7 @@ const config: GitNexusConfig = {
     // Performance Features
     enableWebWorkers: true,
     enableBatchProcessing: true,
+    enableKuzuCopy: true, // Enable COPY-based bulk loading
     enableCaching: true,
     enableWorkerPool: true,
     enableParallelParsing: true,

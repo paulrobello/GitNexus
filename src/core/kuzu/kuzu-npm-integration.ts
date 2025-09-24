@@ -144,7 +144,9 @@ function createKuzuInstance(): KuzuInstance {
     },
     
     async executeQuery(cypher: string): Promise<QueryResult> {
-      console.log(`🔍 Executing query: ${cypher}`);
+      // Trim long queries for cleaner logs
+      const trimmedQuery = cypher.length > 100 ? cypher.substring(0, 100) + '...' : cypher;
+      console.log(`🔍 Executing query: ${trimmedQuery}`);
       
       try {
         const result = await connection.query(cypher);
@@ -234,6 +236,13 @@ function createKuzuInstance(): KuzuInstance {
     
     getDatabasePath(): string {
       return ':memory:';
+    },
+    
+    getFS(): any {
+      if (!kuzuModule || !kuzuModule.default || !kuzuModule.default.FS) {
+        throw new Error('KuzuDB FS API not available');
+      }
+      return kuzuModule.default.FS;
     }
   };
 }

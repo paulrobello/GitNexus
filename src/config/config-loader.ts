@@ -129,6 +129,7 @@ const FeaturesConfigSchema = z.object({
   // Performance Features
   enableWebWorkers: z.boolean(),
   enableBatchProcessing: z.boolean(),
+  enableKuzuCopy: z.boolean(),
   enableCaching: z.boolean(),
   enableWorkerPool: z.boolean(),
   enableParallelParsing: z.boolean(),
@@ -300,6 +301,7 @@ export class ConfigLoader {
         // Performance Features
         enableWebWorkers: true,
         enableBatchProcessing: true,
+        enableKuzuCopy: false,
         enableCaching: true,
         enableWorkerPool: true,
         enableParallelParsing: true,

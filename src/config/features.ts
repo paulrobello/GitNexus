@@ -38,6 +38,10 @@ export function isKuzuDBPerformanceMonitoringEnabled(): boolean {
   return cachedConfig?.features.enablePerformanceLogging ?? true;
 }
 
+export function isKuzuCopyEnabled(): boolean {
+  return cachedConfig?.features.enableKuzuCopy ?? false;
+}
+
 // Processing Features
 export function isParallelParsingEnabled(): boolean {
   return cachedConfig?.features.enableParallelParsing ?? true;
@@ -111,6 +115,7 @@ export function getFeatureFlags() {
       enableKuzuDB: true,
       enableKuzuDBPersistence: true,
       enableKuzuDBPerformanceMonitoring: true,
+      enableKuzuCopy: false,
       enableDebugMode: false,
       enablePerformanceLogging: true,
       enableQueryLogging: false

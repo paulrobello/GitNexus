@@ -9,6 +9,8 @@
 import type { KnowledgeGraph, GraphNode, GraphRelationship, NodeLabel, RelationshipType } from './types.ts';
 import type { KuzuQueryEngine, KuzuQueryResult } from './kuzu-query-engine.ts';
 import { generateId } from '../../lib/utils.ts';
+import { GitNexusCSVGenerator, CSVUtils } from '../kuzu/csv-generator.ts';
+import { isKuzuCopyEnabled } from '../../config/features.ts';
 
 export interface KuzuGraphOptions {
   enableCache?: boolean;
@@ -194,9 +196,34 @@ export class KuzuKnowledgeGraph implements KnowledgeGraph {
   }
 
   /**
-   * Commit a batch of nodes of the same label using UNWIND
+   * Commit a batch of nodes with COPY optimization and MERGE fallback
    */
   private async commitNodesBatch(label: string, nodes: GraphNode[]): Promise<void> {
+    if (nodes.length === 0) return;
+    
+    // Check if COPY is enabled and supported
+    if (this.isCopyEnabled() && await this.isCopySupported()) {
+      try {
+        await this.commitNodesBatchWithCOPY(label, nodes);
+        return; // Success with COPY
+      } catch (copyError) {
+        console.warn(`⚠️ COPY-BULK: COPY failed for ${label}, falling back to MERGE batch:`, copyError.message);
+        // Fall through to MERGE approach
+      }
+    } else if (!this.isCopyEnabled()) {
+      console.log(`🔄 MERGE-BATCH: COPY disabled, using MERGE batch for ${nodes.length} ${label} nodes`);
+    } else {
+      console.log(`🔄 MERGE-BATCH: COPY not supported, using MERGE batch for ${nodes.length} ${label} nodes`);
+    }
+    
+    // Fallback to current MERGE approach
+    await this.commitNodesBatchWithMERGE(label, nodes);
+  }
+
+  /**
+   * Original MERGE-based batch commit (kept as fallback)
+   */
+  private async commitNodesBatchWithMERGE(label: string, nodes: GraphNode[]): Promise<void> {
     if (nodes.length === 0) return;
     
     try {
@@ -233,9 +260,40 @@ export class KuzuKnowledgeGraph implements KnowledgeGraph {
   }
 
   /**
-   * Commit a batch of relationships of the same type using UNWIND
+   * Commit a batch of relationships with COPY optimization and MERGE fallback
    */
   private async commitRelationshipsBatch(type: string, relationships: GraphRelationship[]): Promise<void> {
+    if (relationships.length === 0) return;
+    
+    // TODO: COPY for relationships needs different approach - disable for now
+    // Relationships in KuzuDB work differently than nodes (FROM/TO vs source/target columns)
+    console.log(`🔄 MERGE-BATCH: Using MERGE for ${relationships.length} ${type} relationships (COPY not yet supported for relationships)`);
+    
+    /* Disabled until relationship COPY is properly implemented
+    // Check if COPY is enabled and supported
+    if (this.isCopyEnabled() && await this.isCopySupported()) {
+      try {
+        await this.commitRelationshipsBatchWithCOPY(type, relationships);
+        return; // Success with COPY
+      } catch (copyError) {
+        console.warn(`⚠️ COPY-BULK: COPY failed for ${type}, falling back to MERGE batch:`, copyError.message);
+        // Fall through to MERGE approach
+      }
+    } else if (!this.isCopyEnabled()) {
+      console.log(`🔄 MERGE-BATCH: COPY disabled, using MERGE batch for ${relationships.length} ${type} relationships`);
+    } else {
+      console.log(`🔄 MERGE-BATCH: COPY not supported, using MERGE batch for ${relationships.length} ${type} relationships`);
+    }
+    */
+    
+    // Fallback to current MERGE approach
+    await this.commitRelationshipsBatchWithMERGE(type, relationships);
+  }
+
+  /**
+   * Original MERGE-based relationship commit (kept as fallback)
+   */
+  private async commitRelationshipsBatchWithMERGE(type: string, relationships: GraphRelationship[]): Promise<void> {
     if (relationships.length === 0) return;
     
     try {
@@ -801,6 +859,157 @@ export class KuzuKnowledgeGraph implements KnowledgeGraph {
     } catch (error) {
       console.error(`❌ Failed to create relationship table ${relationshipType}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Commit nodes using COPY statement (new optimized approach)
+   */
+  private async commitNodesBatchWithCOPY(label: string, nodes: GraphNode[]): Promise<void> {
+    if (nodes.length === 0) return;
+    
+    const startTime = performance.now();
+    
+    try {
+      console.log(`🚀 COPY-BULK: Loading ${nodes.length} ${label} nodes via COPY statement`);
+      
+      // Generate CSV data
+      const csvData = GitNexusCSVGenerator.generateNodeCSV(nodes, label as NodeLabel);
+      if (!csvData) {
+        console.warn(`⚠️ COPY-BULK: No CSV data generated for ${label} nodes`);
+        return;
+      }
+      
+      // Write to WASM filesystem with unique filename
+      const timestamp = Date.now();
+      const csvPath = `/temp_${label}_nodes_${timestamp}.csv`;
+      
+      // Access FS API through query engine
+      const kuzuFS = await this.getKuzuFS();
+      
+      const writeResult = await kuzuFS.writeFile(csvPath, csvData);
+      
+      // Debug: Read back what was written for problematic function only
+      const readData = await kuzuFS.readFile(csvPath);
+      
+      // Convert read data to string for COPY operation
+      let readBack: string;
+      if (typeof readData === 'string') {
+        readBack = readData;
+      } else if (readData instanceof Uint8Array || readData instanceof ArrayBuffer) {
+        readBack = new TextDecoder().decode(readData);
+      } else {
+        readBack = String(readData);
+      }
+      
+      // Execute COPY statement
+      const copyQuery = `COPY ${label} FROM '${csvPath}'`;
+      const result = await this.queryEngine.executeQuery(copyQuery);
+      // Note: COPY result doesn't need to be closed
+      
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
+      console.log(`✅ COPY-BULK: Successfully loaded ${nodes.length} ${label} nodes in ${duration.toFixed(2)}ms (${csvData.length} bytes CSV)`);
+      
+      // Verify data was written by querying the count
+      try {
+        const verifyResult = await this.queryEngine.executeQuery(`MATCH (n:${label}) RETURN COUNT(n) as count`);
+        const totalCount = verifyResult.rows?.[0]?.[0] || 0;
+        console.log(`📊 COPY-BULK: KuzuDB now contains ${totalCount} total ${label} nodes`);
+      } catch (verifyError) {
+        console.warn(`⚠️ COPY-BULK: Could not verify ${label} count:`, verifyError.message);
+      }
+      
+    } catch (error) {
+      console.error(`❌ COPY-BULK: Failed to load ${label} nodes:`, error);
+      // Re-throw with more context for better debugging
+      throw new Error(`COPY operation failed for ${label}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Commit relationships using COPY statement (new optimized approach)
+   */
+  private async commitRelationshipsBatchWithCOPY(type: string, relationships: GraphRelationship[]): Promise<void> {
+    if (relationships.length === 0) return;
+    
+    const startTime = performance.now();
+    
+    try {
+      console.log(`🚀 COPY-BULK: Loading ${relationships.length} ${type} relationships via COPY statement`);
+      
+      // Generate CSV data
+      const csvData = GitNexusCSVGenerator.generateRelationshipCSV(relationships, type as RelationshipType);
+      if (!csvData) {
+        console.warn(`⚠️ COPY-BULK: No CSV data generated for ${type} relationships`);
+        return;
+      }
+      
+      // Write to WASM filesystem
+      const timestamp = Date.now();
+      const csvPath = `/temp_${type}_rels_${timestamp}.csv`;
+      
+      const kuzuFS = await this.getKuzuFS();
+      await kuzuFS.writeFile(csvPath, csvData);
+      
+      // Execute COPY statement
+      const copyQuery = `COPY ${type} FROM '${csvPath}'`;
+      const result = await this.queryEngine.executeQuery(copyQuery);
+      // Note: COPY result doesn't need to be closed
+      
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
+      console.log(`✅ COPY-BULK: Successfully loaded ${relationships.length} ${type} relationships in ${duration.toFixed(2)}ms (${csvData.length} bytes CSV)`);
+      
+      // Verify data was written by querying the count
+      try {
+        const verifyResult = await this.queryEngine.executeQuery(`MATCH ()-[r:${type}]->() RETURN COUNT(r) as count`);
+        const totalCount = verifyResult.rows?.[0]?.[0] || 0;
+        console.log(`📊 COPY-BULK: KuzuDB now contains ${totalCount} total ${type} relationships`);
+      } catch (verifyError) {
+        console.warn(`⚠️ COPY-BULK: Could not verify ${type} count:`, verifyError.message);
+      }
+      
+    } catch (error) {
+      console.error(`❌ COPY-BULK: Failed to load ${type} relationships:`, error);
+      // Re-throw with more context for better debugging
+      throw new Error(`COPY operation failed for ${type}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get access to KuzuDB FS API
+   */
+  private async getKuzuFS(): Promise<any> {
+    // Access FS through the query engine's kuzu instance
+    const kuzuInstance = this.queryEngine.getKuzuInstance();
+    const fs = kuzuInstance.getFS();
+    
+    if (!fs || !fs.writeFile) {
+      throw new Error('KuzuDB FS API not available');
+    }
+    
+    return fs;
+  }
+
+  /**
+   * Check if COPY approach is enabled via feature flag
+   */
+  private isCopyEnabled(): boolean {
+    return isKuzuCopyEnabled();
+  }
+
+  /**
+   * Check if COPY approach is supported in current environment
+   */
+  private async isCopySupported(): Promise<boolean> {
+    try {
+      const kuzuFS = await this.getKuzuFS();
+      return !!(kuzuFS && kuzuFS.writeFile);
+    } catch (error) {
+      return false;
     }
   }
 

@@ -53,10 +53,24 @@ export class WebWorkerPool {
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map();
 
   constructor(options: WorkerPoolOptions = {}) {
-    this.maxWorkers = options.maxWorkers || Math.max(2, Math.min(8, navigator.hardwareConcurrency || 4));
+    // Use provided maxWorkers or calculate a reasonable default
+    this.maxWorkers = options.maxWorkers ?? Math.max(2, navigator.hardwareConcurrency || 4);
     this.workerScript = options.workerScript || '/workers/generic-worker.js';
     this.timeout = options.timeout || 30000; // 30 seconds
     this.name = options.name || 'WebWorkerPool';
+    
+    // Debug: Log actual worker configuration
+    console.log(`🔧 WebWorkerPool "${this.name}" constructor:`);
+    console.log(`   Requested maxWorkers: ${options.maxWorkers}`);
+    console.log(`   Actual maxWorkers: ${this.maxWorkers}`);
+    console.log(`   navigator.hardwareConcurrency: ${navigator.hardwareConcurrency}`);
+  }
+
+  /**
+   * Get the maximum number of workers configured
+   */
+  get maxWorkersCount(): number {
+    return this.maxWorkers;
   }
 
   /**
@@ -111,24 +125,14 @@ export class WebWorkerPool {
     inputs: TInput[],
     onProgress?: (completed: number, total: number) => void
   ): Promise<TOutput[]> {
-    const results: TOutput[] = [];
-    const total = inputs.length;
-    let completed = 0;
-
-    const batchSize = Math.min(this.maxWorkers, 10);
+    // Just use executeAll - it already handles parallel processing properly
+    const results = await this.executeAll<TInput, TOutput>(inputs);
     
-    for (let i = 0; i < inputs.length; i += batchSize) {
-      const batch = inputs.slice(i, i + batchSize);
-      const batchResults = await this.executeAll<TInput, TOutput>(batch);
-      
-      results.push(...batchResults);
-      completed += batch.length;
-      
-      if (onProgress) {
-        onProgress(completed, total);
-      }
+    // Report completion
+    if (onProgress) {
+      onProgress(inputs.length, inputs.length);
     }
-
+    
     return results;
   }
 
@@ -487,16 +491,28 @@ export const WebWorkerPoolUtils = {
    * Create a worker pool using GitNexus configuration
    */
   async createWorkerPool(options: Partial<WorkerPoolOptions> = {}): Promise<WebWorkerPool> {
+    console.log('🔧 WebWorkerPoolUtils: Loading config and calculating workers...');
+    
     // Import config loader dynamically to avoid circular dependencies
     const { ConfigLoader } = await import('../config/config-loader.ts');
     const { calculateWorkerCount } = await import('./worker-calculator.ts');
     
+    console.log('🔧 WebWorkerPoolUtils: Imports loaded, getting config...');
     const config = await ConfigLoader.getInstance().loadConfig();
+    console.log('🔧 WebWorkerPoolUtils: Config loaded, calculating worker count...');
     const workerCalc = await calculateWorkerCount(config);
+    console.log('🔧 WebWorkerPoolUtils: Worker calculation complete:', workerCalc.workerCount);
     
     console.log(''); // Empty line for better readability
     console.log('🔧 GitNexus Worker Pool Initialization');
     console.log('='.repeat(50));
+    
+    console.log('🔧 WebWorkerPoolUtils: Creating WebWorkerPool with options:', {
+      maxWorkers: workerCalc.workerCount,
+      timeout: config.processing.parallel.workerTimeoutMs,
+      name: 'GitNexusWorkerPool',
+      ...options
+    });
     
     const workerPool = new WebWorkerPool({
       maxWorkers: workerCalc.workerCount,
@@ -504,6 +520,8 @@ export const WebWorkerPoolUtils = {
       name: 'GitNexusWorkerPool',
       ...options
     });
+    
+    console.log('🔧 WebWorkerPoolUtils: WebWorkerPool created, maxWorkers:', workerPool.maxWorkersCount);
     
     console.log('='.repeat(50));
     console.log('✅ Worker pool created successfully');
