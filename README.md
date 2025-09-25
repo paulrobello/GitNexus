@@ -7,7 +7,8 @@ https://github.com/user-attachments/assets/6f13bd45-d6e9-4f4e-a360-ceb66f41c741
 
 ## Current Work in Progress:
 
-Switch to bulk COPY into Kuzu DB from Batch writing. Should prevent Error ( RangeError: Maximum call stack size exceeded ) and should improve speed by about 50%, especially for large codebases
+- Ollama support
+- Export as csv ( for both node and relation table )
 
 
 ## Features
