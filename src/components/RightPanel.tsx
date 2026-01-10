@@ -8,6 +8,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ReactMarkdown from 'react-markdown';
 import { useAppState } from '../hooks/useAppState';
 import { ToolCallCard } from './ToolCallCard';
+import { MermaidRenderer } from './MermaidRenderer';
 import { isProviderConfigured } from '../core/llm/settings-service';
 
 // Custom syntax theme
@@ -49,6 +50,27 @@ export const RightPanel = () => {
   
   const [chatInput, setChatInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Track processed mermaid errors to prevent infinite loops or duplicate correction requests
+  const processedMermaidErrors = useRef<Set<string>>(new Set());
+
+  // Handle auto-correction of mermaid syntax errors
+  const handleMermaidFix = useCallback((error: string, code: string) => {
+    // Generate a simple hash of the code to track it
+    const hash = code.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0).toString();
+    
+    // If we've already processed this exact error for this exact code, skip
+    if (processedMermaidErrors.current.has(hash)) return;
+    
+    // Add to processed set
+    processedMermaidErrors.current.add(hash);
+    
+    // Send feedback to the agent
+    // We send this as a system alert message that the user "sees" but is clearly marked
+    const feedbackMessage = `System Alert: The Mermaid diagram you generated contains a syntax error:\n${error}\n\nPlease fix the syntax and regenerate the diagram.`;
+    
+    sendChatMessage(feedbackMessage);
+  }, [sendChatMessage]);
 
   const resolveFilePathForUI = useCallback((requestedPath: string): string | null => {
     const req = requestedPath.replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
@@ -279,23 +301,10 @@ export const RightPanel = () => {
             </div>
           )}
 
-          {/* Active tool calls - shown at top during execution */}
-          {currentToolCalls.length > 0 && (
-            <div className="px-4 py-3 bg-elevated/60 border-b border-border-subtle space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span>Working...</span>
-              </div>
-              {currentToolCalls.map(tc => (
-                <ToolCallCard key={tc.id} toolCall={tc} defaultExpanded={false} />
-              ))}
-            </div>
-          )}
-
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
             {chatMessages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">
                 <div className="w-14 h-14 mb-4 flex items-center justify-center bg-gradient-to-br from-accent to-node-interface rounded-xl shadow-glow text-2xl">
                   🧠
                 </div>
@@ -318,41 +327,39 @@ export const RightPanel = () => {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-5">
-                {chatMessages.map((message) => (
+              <div className="flex flex-col">
+                {chatMessages.map((message, idx) => (
                   <div
                     key={message.id}
-                    className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''} animate-fade-in`}
+                    className="animate-fade-in border-b border-border-subtle/30 last:border-b-0"
                   >
-                    <div className={`
-                      w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md text-sm
-                      ${message.role === 'assistant' 
-                        ? 'bg-gradient-to-br from-accent to-node-interface text-white' 
-                        : 'bg-elevated border border-border-subtle text-text-secondary'
-                      }
-                    `}>
-                      {message.role === 'assistant' ? (
-                        <Sparkles className="w-3.5 h-3.5" />
-                      ) : (
-                        <User className="w-3.5 h-3.5" />
-                      )}
-                    </div>
-                    <div className={`
-                      max-w-[90%] rounded-xl
-                      ${message.role === 'assistant'
-                        ? 'px-4 py-3 bg-elevated border border-border-subtle text-text-primary chat-prose'
-                        : 'px-3.5 py-2.5 bg-accent text-white text-sm'
-                      }
-                    `}>
-                      {message.role === 'assistant' ? (
-                        // Render steps in order (reasoning, tool calls, content interleaved)
-                        message.steps && message.steps.length > 0 ? (
-                          <div className="space-y-4">
-                            {message.steps.map((step) => (
-                              <div key={step.id}>
-                                {step.type === 'reasoning' && step.content && (
-                                  <div className="text-text-primary text-sm chat-prose">
-                                    <ReactMarkdown
+                    {/* User message - compact, inline style */}
+                    {message.role === 'user' ? (
+                      <div className="px-4 py-3 bg-surface/40">
+                        <div className="flex items-start gap-2.5">
+                          <User className="w-4 h-4 text-text-muted mt-0.5 flex-shrink-0" />
+                          <div className="flex-1 text-sm text-text-primary leading-relaxed">
+                            {message.content}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Assistant message - full width, no bubble */
+                      <div className="px-4 py-4 bg-deep/40"
+                      >
+                        <div className="flex items-start gap-2.5 mb-3">
+                          <Sparkles className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-xs font-medium text-cyan-300 uppercase tracking-wide">Nexus</span>
+                        </div>
+                        <div className="pl-6.5 chat-prose text-text-primary">
+                          {/* Render steps in order (reasoning, tool calls, content interleaved) */}
+                          {message.steps && message.steps.length > 0 ? (
+                            <div className="space-y-3">
+                              {message.steps.map((step) => (
+                                <div key={step.id}>
+                                  {(step.type === 'reasoning' || step.type === 'content') && step.content && (
+                                    <div className="text-text-primary text-sm chat-prose">
+                                      <ReactMarkdown
                                       components={{
                                         a: ({ href, children, ...props }) => {
                                           if (href && href.startsWith('code-ref:')) {
@@ -413,6 +420,17 @@ export const RightPanel = () => {
                                           }
 
                                           const language = match ? match[1] : 'text';
+
+                                          // Render mermaid diagrams
+                                          if (language === 'mermaid') {
+                                            return (
+                                              <MermaidRenderer 
+                                                code={codeContent} 
+                                                onError={(err) => handleMermaidFix(err, codeContent)} 
+                                              />
+                                            );
+                                          }
+
                                           return (
                                             <SyntaxHighlighter
                                               style={customTheme}
@@ -437,102 +455,16 @@ export const RightPanel = () => {
                                       {formatMarkdownForDisplay(step.content)}
                                     </ReactMarkdown>
                                   </div>
-                                )}
-                                {step.type === 'tool_call' && step.toolCall && (
-                                  <ToolCallCard toolCall={step.toolCall} defaultExpanded={false} />
-                                )}
-                                {step.type === 'content' && step.content && (
-                                  <ReactMarkdown
-                                    components={{
-                                      a: ({ href, children, ...props }) => {
-                                        if (href && href.startsWith('code-ref:')) {
-                                          const inner = decodeURIComponent(href.slice('code-ref:'.length));
-                                          const label = formatRefChipLabel(inner);
-                                          return (
-                                            <a
-                                              href={href}
-                                              onClick={(e) => {
-                                                e.preventDefault();
-                                                handleGroundingClick(inner);
-                                              }}
-                                              className="inline-flex items-center px-2 py-0.5 rounded-md border border-cyan-300/55 bg-cyan-400/10 !text-cyan-200 visited:!text-cyan-200 font-mono text-[12px] !no-underline hover:!no-underline hover:bg-cyan-400/15 hover:border-cyan-200/70 transition-colors"
-                                              title={`Open in Code panel • ${inner}`}
-                                              {...props}
-                                            >
-                                              <span className="text-inherit">{label || children}</span>
-                                            </a>
-                                          );
-                                        }
-                                        const internalRef = getInternalRefFromLink(href, children);
-                                        if (internalRef) {
-                                          const label = formatRefChipLabel(internalRef);
-                                          return (
-                                            <a
-                                              href={href}
-                                              onClick={(e) => {
-                                                e.preventDefault();
-                                                handleGroundingClick(internalRef);
-                                              }}
-                                              className="inline-flex items-center px-2 py-0.5 rounded-md border border-cyan-300/55 bg-cyan-400/10 !text-cyan-200 visited:!text-cyan-200 font-mono text-[12px] !no-underline hover:!no-underline hover:bg-cyan-400/15 hover:border-cyan-200/70 transition-colors"
-                                              title={`Open in Code panel • ${internalRef}`}
-                                              {...props}
-                                            >
-                                              <span className="text-inherit">{label || children}</span>
-                                            </a>
-                                          );
-                                        }
-                                        return (
-                                          <a
-                                            href={href}
-                                            className="text-accent underline underline-offset-2 hover:text-purple-300"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            {...props}
-                                          >
-                                            {children}
-                                          </a>
-                                        );
-                                      },
-                                      code: ({ className, children, ...props }) => {
-                                        const match = /language-(\w+)/.exec(className || '');
-                                        const isInline = !className && !match;
-                                        const codeContent = String(children).replace(/\n$/, '');
-                                        
-                                        if (isInline) {
-                                          return <code {...props}>{children}</code>;
-                                        }
-                                        
-                                        const language = match ? match[1] : 'text';
-                                        return (
-                                          <SyntaxHighlighter
-                                            style={customTheme}
-                                            language={language}
-                                            PreTag="div"
-                                            customStyle={{
-                                              margin: 0,
-                                              padding: '14px 16px',
-                                              borderRadius: '8px',
-                                              fontSize: '13px',
-                                              background: '#0a0a10',
-                                              border: '1px solid #1e1e2a',
-                                            }}
-                                          >
-                                            {codeContent}
-                                          </SyntaxHighlighter>
-                                        );
-                                      },
-                                      pre: ({ children }) => <>{children}</>,
-                                    }}
-                                  >
-                                    {formatMarkdownForDisplay(step.content)}
-                                  </ReactMarkdown>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          // Fallback: render content + toolCalls separately (old format)
-                          <>
+                                  )}
+                                  {step.type === 'tool_call' && step.toolCall && (
+                                    <ToolCallCard toolCall={step.toolCall} defaultExpanded={false} />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            /* Fallback: render content + toolCalls separately (old format) */
+                            <>
                             <ReactMarkdown
                               components={{
                                 a: ({ href, children, ...props }) => {
@@ -594,6 +526,17 @@ export const RightPanel = () => {
                                   }
                                   
                                   const language = match ? match[1] : 'text';
+                                  
+                                  // Render mermaid diagrams
+                                  if (language === 'mermaid') {
+                                    return (
+                                      <MermaidRenderer 
+                                        code={codeContent} 
+                                        onError={(err) => handleMermaidFix(err, codeContent)} 
+                                      />
+                                    );
+                                  }
+                                  
                                   return (
                                     <SyntaxHighlighter
                                       style={customTheme}
@@ -617,19 +560,18 @@ export const RightPanel = () => {
                             >
                               {formatMarkdownForDisplay(message.content)}
                             </ReactMarkdown>
-                            {message.toolCalls && message.toolCalls.length > 0 && (
-                              <div className="mt-3 space-y-2">
-                                {message.toolCalls.map(tc => (
-                                  <ToolCallCard key={tc.id} toolCall={tc} defaultExpanded={false} />
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )
-                      ) : (
-                        message.content
-                      )}
-                    </div>
+                              {message.toolCalls && message.toolCalls.length > 0 && (
+                                <div className="mt-3 space-y-2">
+                                  {message.toolCalls.map(tc => (
+                                    <ToolCallCard key={tc.id} toolCall={tc} defaultExpanded={false} />
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -679,6 +621,3 @@ export const RightPanel = () => {
     </aside>
   );
 };
-
-
-

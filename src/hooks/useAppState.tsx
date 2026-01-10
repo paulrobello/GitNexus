@@ -571,6 +571,8 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     const stepsForMessage: MessageStep[] = [];
     // Keep toolCalls for backwards compat and currentToolCalls state
     const toolCallsForMessage: ToolCallInfo[] = [];
+    // Dedupe guard: tool_call events can arrive twice (messages + values stream modes)
+    const seenToolCallIds = new Set<string>();
     let stepCounter = 0;
 
     // Helper to update the message with current steps
@@ -693,6 +695,8 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
           case 'tool_call':
             if (chunk.toolCall) {
               const tc = chunk.toolCall;
+              if (tc.id && seenToolCallIds.has(tc.id)) break;
+              if (tc.id) seenToolCallIds.add(tc.id);
               toolCallsForMessage.push(tc);
               // Add tool call as a step (in order with reasoning)
               stepsForMessage.push({
