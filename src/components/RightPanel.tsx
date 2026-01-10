@@ -8,7 +8,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ReactMarkdown from 'react-markdown';
 import { useAppState } from '../hooks/useAppState';
 import { ToolCallCard } from './ToolCallCard';
-import { MermaidRenderer } from './MermaidRenderer';
+import { MermaidDiagram } from './MermaidDiagram';
 import { isProviderConfigured } from '../core/llm/settings-service';
 
 // Custom syntax theme
@@ -50,27 +50,6 @@ export const RightPanel = () => {
   
   const [chatInput, setChatInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Track processed mermaid errors to prevent infinite loops or duplicate correction requests
-  const processedMermaidErrors = useRef<Set<string>>(new Set());
-
-  // Handle auto-correction of mermaid syntax errors
-  const handleMermaidFix = useCallback((error: string, code: string) => {
-    // Generate a simple hash of the code to track it
-    const hash = code.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0).toString();
-    
-    // If we've already processed this exact error for this exact code, skip
-    if (processedMermaidErrors.current.has(hash)) return;
-    
-    // Add to processed set
-    processedMermaidErrors.current.add(hash);
-    
-    // Send feedback to the agent
-    // We send this as a system alert message that the user "sees" but is clearly marked
-    const feedbackMessage = `System Alert: The Mermaid diagram you generated contains a syntax error:\n${error}\n\nPlease fix the syntax and regenerate the diagram.`;
-    
-    sendChatMessage(feedbackMessage);
-  }, [sendChatMessage]);
 
   const resolveFilePathForUI = useCallback((requestedPath: string): string | null => {
     const req = requestedPath.replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
@@ -420,17 +399,6 @@ export const RightPanel = () => {
                                           }
 
                                           const language = match ? match[1] : 'text';
-
-                                          // Render mermaid diagrams
-                                          if (language === 'mermaid') {
-                                            return (
-                                              <MermaidRenderer 
-                                                code={codeContent} 
-                                                onError={(err) => handleMermaidFix(err, codeContent)} 
-                                              />
-                                            );
-                                          }
-
                                           return (
                                             <SyntaxHighlighter
                                               style={customTheme}
@@ -529,12 +497,7 @@ export const RightPanel = () => {
                                   
                                   // Render mermaid diagrams
                                   if (language === 'mermaid') {
-                                    return (
-                                      <MermaidRenderer 
-                                        code={codeContent} 
-                                        onError={(err) => handleMermaidFix(err, codeContent)} 
-                                      />
-                                    );
+                                    return <MermaidDiagram code={codeContent} />;
                                   }
                                   
                                   return (
@@ -621,3 +584,6 @@ export const RightPanel = () => {
     </aside>
   );
 };
+
+
+

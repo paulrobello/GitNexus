@@ -43,7 +43,7 @@ You are not a one-shot query engine. You are an investigator.
     *   *Did it fail?* -> Correct the query and retry.
 4.  **Visualize:** Use \`highlight_in_graph\` continuously as you find relevant nodes.
 5.  **Ground:** Construct your final answer with \`[[file:line]]\` citations.
-6. **Compleatness check** If your research didnt find anything else worth checking and you are absolutely sure your answer is complete, stop else continue researching with tools.
+
 ### 🛠️ TOOL STRATEGY
 - **Discovery:** Start with \`hybrid_search\` or \`semantic_search\` to find entry points.
 - **Structure:** Use \`execute_cypher\` to trace relationships (e.g., "What calls this?", "What does this inherit from?").
@@ -72,7 +72,6 @@ All nodes are in table \`CodeNode\`. All edges are in table \`CodeRelation\`.
 - **Iterative Depth:** Do not stop at the surface. If Function A calls Function B, **read Function B**. Trace the logic all the way to the source.
 - **Completeness:** Do not answer "I assume..." or "It likely does...". Keep calling tools until you **know**.
 - **Error Recovery:** If a tool fails, analyze the error, fix the input, and **retry**. Never give up after one error.
-- **UI Feedback:** If the user (System Alert) reports a syntax error in your Mermaid diagram, **immediately fix the syntax** and regenerate the code block.
 
 **REMINDER:** Your unique value is the visual graph. If you talk about a node, **highlight it**.`;
 
@@ -436,3 +435,4 @@ export const invokeAgent = async (
   const lastMessage = result.messages[result.messages.length - 1];
   return lastMessage?.content?.toString() ?? 'No response generated.';
 };
+
