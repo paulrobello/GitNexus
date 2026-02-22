@@ -278,7 +278,7 @@ export const SettingsPanel = ({ isOpen, onClose, onSettingsSaved }: SettingsPane
 
   if (!isOpen) return null;
 
-  const providers: LLMProvider[] = ['openai', 'gemini', 'anthropic', 'azure-openai', 'ollama', 'openrouter'];
+  const providers: LLMProvider[] = ['openai', 'gemini', 'anthropic', 'azure-openai', 'ollama', 'openrouter', 'deepseek'];
 
 
   return (
@@ -334,7 +334,7 @@ export const SettingsPanel = ({ isOpen, onClose, onSettingsSaved }: SettingsPane
                     w-8 h-8 rounded-lg flex items-center justify-center text-lg
                     ${settings.activeProvider === provider ? 'bg-accent/20' : 'bg-surface'}
                   `}>
-                    {provider === 'openai' ? '🤖' : provider === 'gemini' ? '💎' : provider === 'anthropic' ? '🧠' : provider === 'ollama' ? '🦙' : provider === 'openrouter' ? '🌐' : '☁️'}
+                    {provider === 'openai' ? '🤖' : provider === 'gemini' ? '💎' : provider === 'anthropic' ? '🧠' : provider === 'ollama' ? '🦙' : provider === 'openrouter' ? '🌐' : provider === 'deepseek' ? '🐋' : '☁️'}
                   </div>
                   <span className="font-medium">{getProviderDisplayName(provider)}</span>
                 </button>
@@ -783,6 +783,92 @@ export const SettingsPanel = ({ isOpen, onClose, onSettingsSaved }: SettingsPane
           )}
 
 
+
+          {/* DeepSeek Settings */}
+          {settings.activeProvider === 'deepseek' && (
+            <div className="space-y-4 animate-fade-in">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                <p className="text-xs text-blue-300 leading-relaxed">
+                  <span className="font-medium">🐋 DeepSeek:</span> Supports both{' '}
+                  <code className="px-1 py-0.5 bg-black/20 rounded">deepseek-chat</code> and{' '}
+                  <code className="px-1 py-0.5 bg-black/20 rounded">deepseek-reasoner</code> (thinking mode).
+                  When using <code className="px-1 py-0.5 bg-black/20 rounded">deepseek-reasoner</code> with tool calls,{' '}
+                  <code className="px-1 py-0.5 bg-black/20 rounded">reasoning_content</code> is automatically preserved across turns.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-text-secondary">
+                  <Key className="w-4 h-4" />
+                  API Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showApiKey['deepseek'] ? 'text' : 'password'}
+                    value={settings.deepseek?.apiKey ?? ''}
+                    onChange={e => setSettings(prev => ({
+                      ...prev,
+                      deepseek: { ...prev.deepseek!, apiKey: e.target.value }
+                    }))}
+                    placeholder="Enter your DeepSeek API key"
+                    className="w-full px-4 py-3 pr-12 bg-elevated border border-border-subtle rounded-xl text-text-primary placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleApiKeyVisibility('deepseek')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    {showApiKey['deepseek'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-text-muted">
+                  Get your API key from{' '}
+                  <a
+                    href="https://platform.deepseek.com/api_keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    DeepSeek Platform
+                  </a>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-text-secondary">Model</label>
+                <input
+                  type="text"
+                  value={settings.deepseek?.model ?? 'deepseek-chat'}
+                  onChange={e => setSettings(prev => ({
+                    ...prev,
+                    deepseek: { ...prev.deepseek!, model: e.target.value }
+                  }))}
+                  placeholder="e.g., deepseek-chat, deepseek-reasoner"
+                  className="w-full px-4 py-3 bg-elevated border border-border-subtle rounded-xl text-text-primary placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-all font-mono text-sm"
+                />
+                <p className="text-xs text-text-muted">
+                  Use <code className="px-1 py-0.5 bg-elevated rounded">deepseek-reasoner</code> for thinking mode with tool call support.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-text-secondary">
+                  <Server className="w-4 h-4" />
+                  Base URL <span className="text-text-muted font-normal">(optional)</span>
+                </label>
+                <input
+                  type="url"
+                  value={settings.deepseek?.baseUrl ?? ''}
+                  onChange={e => setSettings(prev => ({
+                    ...prev,
+                    deepseek: { ...prev.deepseek!, baseUrl: e.target.value }
+                  }))}
+                  placeholder="https://api.deepseek.com/v1 (default)"
+                  className="w-full px-4 py-3 bg-elevated border border-border-subtle rounded-xl text-text-primary placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-all"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Privacy Note */}
           <div className="p-4 bg-elevated/50 border border-border-subtle rounded-xl">

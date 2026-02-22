@@ -13,14 +13,15 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOllama } from '@langchain/ollama';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { createGraphRAGTools } from './tools';
-import type { 
-  ProviderConfig, 
+import type {
+  ProviderConfig,
   OpenAIConfig,
-  AzureOpenAIConfig, 
+  AzureOpenAIConfig,
   GeminiConfig,
   AnthropicConfig,
   OllamaConfig,
   OpenRouterConfig,
+  DeepSeekConfig,
   AgentStreamChunk,
 } from './types';
 import { 
@@ -226,6 +227,166 @@ export const createChatModel = (config: ProviderConfig): BaseChatModel => {
       });
     }
     
+    case 'deepseek': {
+      const deepSeekConfig = config as DeepSeekConfig;
+
+      if (!deepSeekConfig.apiKey || deepSeekConfig.apiKey.trim() === '') {
+        throw new Error('DeepSeek API key is required but was not provided');
+      }
+
+      /**
+       * DeepSeek reasoning_content fix
+       *
+       * Problem: deepseek-reasoner returns `reasoning_content` in assistant messages
+       * that include tool calls. When the conversation history is sent back to the
+       * API for subsequent turns, `reasoning_content` MUST be present in those
+       * assistant messages — otherwise the API returns HTTP 400.
+       *
+       * LangChain's @langchain/openai silently drops non-standard delta fields
+       * (including `reasoning_content`) during SSE streaming, so it never ends
+       * up in the AIMessage.additional_kwargs that LangChain spreads into the
+       * next request payload.
+       *
+       * Fix: a custom fetch wrapper that:
+       *   1. Intercepts the SSE response and accumulates `reasoning_content`
+       *      deltas, keying them by tool_call id.
+       *   2. Before each outgoing request, patches any assistant message that
+       *      carries tool_calls but is missing `reasoning_content`, restoring
+       *      the stored value (or empty string as a safe fallback).
+       */
+      const reasoningStore = new Map<string, string>();
+
+      const deepSeekFetch = async (
+        url: RequestInfo | URL,
+        init?: RequestInit,
+      ): Promise<Response> => {
+        // ── 1. Patch outgoing request ──────────────────────────────────────
+        if (init?.body && typeof init.body === 'string') {
+          try {
+            const body = JSON.parse(init.body);
+            if (Array.isArray(body.messages)) {
+              let patched = false;
+              body.messages = body.messages.map((msg: any) => {
+                if (
+                  msg.role === 'assistant' &&
+                  Array.isArray(msg.tool_calls) &&
+                  msg.tool_calls.length > 0 &&
+                  msg.reasoning_content === undefined
+                ) {
+                  const firstId: string | undefined = msg.tool_calls[0]?.id;
+                  const stored = firstId ? reasoningStore.get(firstId) : undefined;
+                  patched = true;
+                  // Use stored content or empty string (DeepSeek accepts '')
+                  return { ...msg, reasoning_content: stored ?? '' };
+                }
+                return msg;
+              });
+              if (patched) {
+                init = { ...init, body: JSON.stringify(body) };
+              }
+            }
+          } catch {
+            // Leave body unchanged if parsing fails
+          }
+        }
+
+        const response = await fetch(url as RequestInfo, init);
+
+        // ── 2. Extract reasoning_content from SSE stream ───────────────────
+        const isStream =
+          response.headers.get('content-type')?.includes('text/event-stream') ?? false;
+
+        if (isStream && response.body) {
+          const [callerStream, extractStream] = response.body.tee();
+
+          // Read extractStream asynchronously — do NOT block the caller
+          (async () => {
+            let accumulated = '';
+            const toolCallIds: string[] = [];
+            let buffer = '';
+
+            try {
+              const reader = extractStream.getReader();
+              const decoder = new TextDecoder();
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() ?? '';
+
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (!trimmed.startsWith('data:')) continue;
+                  const jsonStr = trimmed.slice(5).trim();
+                  if (jsonStr === '[DONE]') continue;
+
+                  try {
+                    const data = JSON.parse(jsonStr);
+                    const delta = data.choices?.[0]?.delta;
+                    if (!delta) continue;
+
+                    // Accumulate reasoning_content deltas
+                    if (typeof delta.reasoning_content === 'string') {
+                      accumulated += delta.reasoning_content;
+                    }
+
+                    // Collect tool call IDs as they stream in
+                    if (Array.isArray(delta.tool_calls)) {
+                      for (const tc of delta.tool_calls) {
+                        if (tc.id && !toolCallIds.includes(tc.id)) {
+                          toolCallIds.push(tc.id);
+                        }
+                      }
+                    }
+                  } catch {
+                    // Ignore malformed SSE lines
+                  }
+                }
+              }
+            } catch {
+              // Ignore stream errors — this is best-effort extraction
+            }
+
+            // Persist for the next request turn
+            if (accumulated && toolCallIds.length > 0) {
+              for (const id of toolCallIds) {
+                reasoningStore.set(id, accumulated);
+              }
+            }
+          })();
+
+          return new Response(callerStream, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          });
+        }
+
+        return response;
+      };
+
+      // deepseek-reasoner does not accept a `temperature` parameter
+      const isReasonerModel =
+        deepSeekConfig.model.includes('reasoner') ||
+        deepSeekConfig.model.includes('thinking');
+
+      return new ChatOpenAI({
+        apiKey: deepSeekConfig.apiKey,
+        modelName: deepSeekConfig.model,
+        ...(isReasonerModel ? {} : { temperature: deepSeekConfig.temperature ?? 0.1 }),
+        maxTokens: deepSeekConfig.maxTokens,
+        streaming: true,
+        configuration: {
+          apiKey: deepSeekConfig.apiKey,
+          baseURL: deepSeekConfig.baseUrl ?? 'https://api.deepseek.com/v1',
+          fetch: deepSeekFetch as any,
+        },
+      });
+    }
+
     default:
       throw new Error(`Unsupported provider: ${(config as any).provider}`);
   }

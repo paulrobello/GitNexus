@@ -8,7 +8,7 @@
 /**
  * Supported LLM providers
  */
-export type LLMProvider = 'openai' | 'azure-openai' | 'gemini' | 'anthropic' | 'ollama' | 'openrouter';
+export type LLMProvider = 'openai' | 'azure-openai' | 'gemini' | 'anthropic' | 'ollama' | 'openrouter' | 'deepseek';
 
 /**
  * Base configuration shared by all providers
@@ -79,9 +79,22 @@ export interface OpenRouterConfig extends BaseProviderConfig {
 }
 
 /**
+ * DeepSeek configuration
+ * Supports both deepseek-chat and deepseek-reasoner (thinking mode).
+ * When using deepseek-reasoner, reasoning_content is automatically
+ * preserved across tool call turns via a fetch-layer interceptor.
+ */
+export interface DeepSeekConfig extends BaseProviderConfig {
+  provider: 'deepseek';
+  apiKey: string;
+  model: string;  // e.g., 'deepseek-chat', 'deepseek-reasoner'
+  baseUrl?: string;  // defaults to https://api.deepseek.com/v1
+}
+
+/**
  * Union type for all provider configurations
  */
-export type ProviderConfig = OpenAIConfig | AzureOpenAIConfig | GeminiConfig | AnthropicConfig | OllamaConfig | OpenRouterConfig;
+export type ProviderConfig = OpenAIConfig | AzureOpenAIConfig | GeminiConfig | AnthropicConfig | OllamaConfig | OpenRouterConfig | DeepSeekConfig;
 
 /**
  * Stored settings (what goes to localStorage)
@@ -98,6 +111,7 @@ export interface LLMSettings {
   anthropic?: Partial<Omit<AnthropicConfig, 'provider'>>;
   ollama?: Partial<Omit<OllamaConfig, 'provider'>>;
   openrouter?: Partial<Omit<OpenRouterConfig, 'provider'>>;
+  deepseek?: Partial<Omit<DeepSeekConfig, 'provider'>>;
 
   // Intelligent Clustering Settings
   intelligentClustering: boolean;
@@ -146,6 +160,12 @@ export const DEFAULT_LLM_SETTINGS: LLMSettings = {
     apiKey: '',
     model: '',
     baseUrl: 'https://openrouter.ai/api/v1',
+    temperature: 0.1,
+  },
+  deepseek: {
+    apiKey: '',
+    model: 'deepseek-chat',
+    baseUrl: 'https://api.deepseek.com/v1',
     temperature: 0.1,
   },
 };
